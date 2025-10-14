@@ -229,7 +229,7 @@ Starting assumptions:
                                                                 Therefore, if this check in the $H$ oracle evaluates to $1$ we know that the $k_2$ provided has to equal $k^*_2$.
                                                                 When this happens, $\adversary{A}$ has provided $\adversary{B}$ with the solution to the $\sdh$ game.
                                                                 A similar approach can be used to simulate the $\dec$ oracle.
-                                                                When calculating the shared key in the $\dec$ oracle, the input for the random oracle has to have the form $label \concat k_1 \concat \nexp(c_2, x) \concat c_2 \concat pk_1 \concat pk_2$ which $\adversary{B}$ is not able to compute.
+                                                                When calculating the shared key in the $\dec$ oracle, the input for the random oracle has to have the form $k_1 \concat \nexp(c_2, x) \concat c_2 \concat pk_1 \concat pk_2 \concat \lbl$ which $\adversary{B}$ is not able to compute.
                                                                 $\adversary{B}$ can use the same method as before to check whether $\adversary{A}$ performs such a query using the $\odh$ oracle.
                                                                 We then use the table $\pset{E}$ to ensure consistency between the random oracle $H$ and the $\dec$ oracle.
                                                                 Therefore, $\adversary{B}$ simulates $\adversary{A}$'s view on the $\cca$ game perfectly and wins the $\sdh$ game iff the adversary queries $H$ with the result of $\nexp(Y, x)$, which is the $k^*_2$ used to generate $k^*$.
