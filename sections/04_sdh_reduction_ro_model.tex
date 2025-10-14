@@ -73,15 +73,15 @@ Starting assumptions:
 \begin{proof}
     Let us consider the following games,
 
-    \begin{gamefigure}{Game $G_0 - G_4$.}{fig:x25519_reduction_games}
+    \begin{gamefigure}{Game $G_0 - G_3$.}{fig:x25519_reduction_games}
         \begin{games}{2}
-            \begin{gameenv}{\game $G_0 / \textcolor{\gone}{G_1} / \textcolor{\gtwo}{G_2} / \textcolor{\gthree}{G_3} / \textcolor{\gfour}{G_4}$}
+            \begin{gameenv}{\game $G_0 / \textcolor{\gone}{G_1} / \textcolor{\gtwo}{G_2} / \textcolor{\gthree}{G_3} $}
                 \State $\ROMtable[\cdot] \assign \bot$
                 \State $(\sk_1, \pk_1) \assign \kem.\keygen()$
                 \State $\sk_2 \sample \honestexponent$
                 \BeginBox[draw=\gone]
                 \State $\sk_2 \sample \exponent$
-                \Comment{$G_1 - G_4$}
+                \Comment{$G_1 - G_3$}
                 \EndBox
                 \State $\pk_2 \assign \nexp(\ngen, \sk_2)$
                 \State $\pk \assign (\pk_1, \pk_2)$
@@ -89,7 +89,7 @@ Starting assumptions:
                 \State $\sk_e \sample \honestexponent$
                 \BeginBox[draw=\gone]
                 \State $\sk_e \sample \exponent$
-                \Comment{$G_1 - G_4$}
+                \Comment{$G_1 - G_3$}
                 \EndBox
                 \State $c^*_2 \assign \nexp(\ngen, \sk_e)$
                 \State $k^*_2 \assign \nexp(\pk_2, \sk_e)$
@@ -98,9 +98,9 @@ Starting assumptions:
                 \State $\ifthen{\ROMtable[s] = \bot}$
                     \State \quad $\ROMtable[s] \sample \bits^{n}$
                     \State $k^* \assign \ROMtable[s]$
-                    \BeginBox[draw=\gfour]
+                    \BeginBox[draw=\gthree]
                     \State $k^* \sample \bits^{n}$
-                    \Comment{$G_4$}
+                    \Comment{$G_3$}
                     \EndBox
                     \State $b' \assign \adversary{A}^{\dec(\cdot), H(\cdot)}(\pk, c^*, k^*)$
                     \State \Return $b'$
@@ -108,39 +108,35 @@ Starting assumptions:
                 \gamebreak
                 \begin{gameenv}{\oracledec}
                     \State $\ifthen{c = c^*}$
+                    \State \quad \Return $\bot$
+                    \State $(c_1, c_2) \assign c$
+                    \State $k_1 \assign \kem.\dec(c_1, \sk_1)$
+                    \State $k_2 \assign \nexp(c_2, \sk_2)$
+                    \State $\ifthen{k_1 \compare \bot}$
                         \State \quad \Return $\bot$
-                        \State $(c_1, c_2) \assign c$
-                        \State $k_1 \assign \kem.\dec(c_1, \sk_1)$
-                        \State $k_2 \assign \nexp(c_2, \sk_2)$
-                        \State $\ifthen{k_1 \compare \bot}$
-                            \State \quad \Return $\bot$
-                            \BeginBox[draw=\gthree]
-                            \LComment{$G_3 - G_4$}
-                            \State $\ifthen{k_1 = k^*_1 \wedge c_1 \neq c^*_1}$
-                                \State \quad $\abort_2$
-                                \EndBox
-                                \State $s \assign \hashinput$
-                                \State $\ifthen{\ROMtable[s] = \bot}$
-                                    \State \quad $\ROMtable[s] \sample \bits^{n}$
-                                    \State $k \assign \ROMtable[s]$
-                                    \State \Return $k$
-                                    \Statex
-                                    \State \underline{\oraclerom{}{m}}
-                                    \State $\hashinput \gets m$
-                                    \BeginBox[draw=\gtwo]
-                                    \LComment{$G_2 - G_4$}\\
-                                    $\ifthen{k_2 = k^*_2}$
-                                        \State \qquad $\abort_1$
-                                        \EndBox
-                                        \State $\ifthen{\ROMtable[m] = \bot}$
-                                            \State \quad $\ROMtable[m] \sample \bits^{n}$
-                                            \State \Return $\ROMtable[m]$
-                                        \end{gameenv}
-                                    \end{games}
-                                    \begin{gameenv}{}
 
-                                    \end{gameenv}
-                                \end{gamefigure}
+                        \State $s \assign \hashinput$
+                        \State $\ifthen{\ROMtable[s] = \bot}$
+                            \State \quad $\ROMtable[s] \sample \bits^{n}$
+                            \State $k \assign \ROMtable[s]$
+                            \State \Return $k$
+                            \Statex
+                            \State \underline{\oraclerom{}{m}}
+                            \State $\hashinput \gets m$
+                            \BeginBox[draw=\gtwo]
+                            \LComment{$G_2 - G_3$}\\
+                            $\ifthen{k_2 = k^*_2}$
+                                \State \qquad $\abort_1$
+                                \EndBox
+                                \State $\ifthen{\ROMtable[m] = \bot}$
+                                    \State \quad $\ROMtable[m] \sample \bits^{n}$
+                                    \State \Return $\ROMtable[m]$
+                                \end{gameenv}
+                            \end{games}
+                            \begin{gameenv}{}
+
+                            \end{gameenv}
+                        \end{gamefigure}
 
                                 \begin{itemize}
                                 \item[\textbf{Game 0}]
@@ -239,14 +235,14 @@ Starting assumptions:
 
 
                                                             \begin{itemize}
-                                                            \item[\textbf{Game 4}]
+                                                            \item[\textbf{Game 3}]
                                                                 In $G_4$ we replace the shared challenge key $k^*$ with a uniform random key.
                                                                 With this change we reached the $\cca^1$ game instantiated with \hqb.
                                                                 Therefore,
 
-                                                            \item[\emph{Claim 4}]
+                                                            \item[\emph{Claim 3}]
 
-                                                                \[ \prone{G^{\adversary{A}}_3} = \prone{G^{\adversary{A}}_4}. \]
+                                                                \[ \prone{G^{\adversary{A}}_2} = \prone{G^{\adversary{A}}_2}. \]
 
                                                             \item[\emph{Proof}]
                                                                 To prove that this change is undetectable by $\adversary{A}$, we need to argue that $\adversary{A}$'s view when interacting with the various oracles is independent of the value of $k^*$.
@@ -260,8 +256,8 @@ Starting assumptions:
                                                                 Since the behavior of all oracles is independent of $k^*$, the adversary cannot detect this game hop.
                                                             \end{itemize}
 
-                                                        \item Now that $k^*$ is chosen uniformly at random, which means that $G_4$ matches the definition of the $\cca^1_{\hqb,\adversary{A}}$ game perfectly. Therefore,
-                                                            \[ \prone{G^{\adversary{A}}_4} = \prone{\cca^1_{\hqb,\adversary{A}}}. \]
+                                                        \item Now that $k^*$ is chosen uniformly at random, which means that $G_3$ matches the definition of the $\cca^1_{\hqb,\adversary{A}}$ game perfectly. Therefore,
+                                                            \[ \prone{G^{\adversary{A}}_3} = \prone{\cca^1_{\hqb,\adversary{A}}}. \]
 
                                                         \item This concludes the proof of Theorem \ref{theorem:sdh_kem-coll_imply_hqb}.
 
