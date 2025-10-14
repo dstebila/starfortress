@@ -188,7 +188,7 @@ Starting assumptions:
                                                 \State $(\sk_1, \pk_1) \sample \kem.\keygen()$
                                                 \State $\pk_2 \assign X$
                                                 \State $\pk \assign (\pk_1, \pk_2)$
-                                                \State $(k^*_1, c^*_1) \sample \kem.\enc(\pk_2)$
+                                                \State $(k^*_1, c^*_1) \sample \kem.\enc(\pk_1)$
                                                 \State $c^*_2 \assign Y$
                                                 \State $c^* \assign (c^*_1, c^*_2)$
                                                 \State $k^* \sample \bits^{n}$
@@ -211,9 +211,9 @@ Starting assumptions:
                                                             \State $\ifthen{\odh(Y, k_2) = 1}$ \label{line:found_cdh}
                                                                 \State \qquad output $k_2$
                                                                 \State $\ifthen{\odh(c_2, k_2) = 1}$ \label{line:is_valid_query}
-                                                                    \State \qquad $\ifthen{\pset{E}[(k_1, k_2, c_1, c_2, \pk_1, \pk_2)] = \bot}$
-                                                                        \State \qquad \quad $\pset{E}[(k_1, k_2, c_1, c_2, \pk_1, \pk_2)] \sample \bits^{n}$
-                                                                        \State \qquad \Return $\pset{E}[(k_1, k_2, c_1, c_2, \pk_1, \pk_2)]$
+                                                                    \State \qquad $\ifthen{\pset{E}[m] = \bot}$
+                                                                        \State \qquad \quad $\pset{E}[m] \sample \bits^{n}$
+                                                                        \State \qquad \Return $\pset{E}[m]$
                                                                         \State $\ifthen{\ROMtable[m] = \bot}$
                                                                             \State \quad $\ROMtable[m] \sample \bits^{n}$
                                                                             \State \Return $\ROMtable[m]$
@@ -222,7 +222,7 @@ Starting assumptions:
                                                                 \end{gamefigure}
 
                                                                 Adversary $\adversary{B}$ uses the challenge group elements $X = \nexp(\ngen, x)$ as the static public key and $Y = \nexp(\ngen, y)$ as the ephemeral public key for the challenge ciphertext.
-                                                                Therefore, the shared challenge key $k^*$ is supposed to be $H_2(label \concat k^*_1 \concat \nexp(Y, x) \concat c^*_2 \concat pk_2)$.
+                                                                Therefore, the shared challenge key $k^*$ is supposed to be $H(label \concat k^*_1 \concat \nexp(Y, x) \concat c^*_2 \concat pk_2)$.
                                                                 $\adversary{B}$ is unable to compute $\nexp(Y, x)$ and therefore sets $k^*$ to a uniform random value.
                                                                 For $\adversary{A}$ to win the $\cca$ game, it would have to query $H_2$ with $\nexp(Y, x)$.
                                                                 $\adversary{B}$ can use the $\odh$ oracle to detect when $\adversary{A}$ queries $H_2$ with the result of $\nexp(Y, x)$, since $\odh(Y, k^*_2) = 1$ iff $k^*_2 = \nexp(Y, x)$.
