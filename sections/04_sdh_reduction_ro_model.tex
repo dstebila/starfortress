@@ -145,6 +145,11 @@ $F$.
         We start with the standard IND-CCA security game for \hqb as defined
         in Figure \ref{fig:sdh_reduction_game_0}.
         %
+        In this game, $\Sigma$ is used to model $H(m)$ as lazily sampled random oracle.
+        As $G_0$ is the $\cca^0$ game instantiated with \hqb, by definition,
+        %
+        \[ \prone{\cca^0_{\hqb,\adversary{A}}} = \prone{G^{\adversary{A}}_0}. \]
+        %
         \begin{gamefigure}{Game $G_0$.}{fig:sdh_reduction_game_0}
             \begin{games}{2}
                 \begin{gameenv}{\game $G_0$}
@@ -189,11 +194,7 @@ $F$.
             \end{games}
         \end{gamefigure}
         %
-        In this game, $\Sigma$ is used to model $H(m)$ as lazily sampled random oracle.
-        As $G_0$ is the $\cca^0$ game instantiated with \hqb, by definition,
-        %
-        \[ \prone{\cca^0_{\hqb,\adversary{A}}} = \prone{G^{\adversary{A}}_0}. \]
-        %
+
     \end{itemize}
 
     \begin{itemize}
@@ -360,7 +361,7 @@ $F$.
         $\adversary{B}$ can use the $\odh$ oracle to detect when
         $\adversary{A}$ queries $H$ with the result of $\nexp(Y, x)$, since
         $\odh(Y, k^*_2) = 1$ iff $k^*_2 = \nexp(Y, x)$.
-        %
+
         Therefore, if this check in the $H$ oracle evaluates to $1$ we know
         that the $k_2$ provided has to equal $k^*_2$.
         %
@@ -388,7 +389,7 @@ $F$.
         Note that the adversary $\adversary{B}$ makes at most $2
         \hashqueries$ queries to the $\odh$ oracle.
         %
-            \begin{gamefigure}{Adversary $\adversary{B}$.}{fig:sdh}
+        \begin{gamefigure}{Adversary $\adversary{B}$.}{fig:sdh}
             \begin{games}{2}
                 \begin{gameenv}{\textbf{Adversary} $\adversary{B}^{\odh(\cdot, \cdot)}(X, Y)$}
                     \State $\ROMtable[\cdot] \assign \bot$
@@ -435,6 +436,42 @@ $F$.
     \item[\textbf{Game 3}]
         In $G_3$ we replace the shared challenge key $k^*$ with a uniform
         random key.
+        %
+        Therefore,
+        %
+    \item[\emph{Claim 3}]
+        %
+        \[ \prone{G^{\adversary{A}}_2} = \prone{G^{\adversary{A}}_3}. \]
+        %
+    \item[\emph{Proof}] To prove that this change is undetectable by
+        $\adversary{A}$, we need to argue that $\adversary{A}$'s view when
+        interacting with the various oracles is independent of the value of
+        $k^*$.
+        %
+        The abort condition in $H$ prevents the adversary from querying the
+        random oracle with the value of $k^*_2$ used to generate the shared
+        key $k^*$ from the challenge.
+        %
+        Since the adversary $\adversary{A}$ cannot query the random oracle
+        $H$ with the input used to generate $k^*$, the output of the random
+        oracle $H$ is independent of $k^*$.
+        %
+        The abort condition in \dec also prevents the adversary from querying
+        the \dec oracle in a way that would result in $k^*$ being outputted.
+        %
+        Either $c_1$ or $c_2$ must be different from $c^*_1$ or $c^*_2$.
+        %
+        If $c_1$ is different, then the resulting key $k_1$ must be different
+        from $k^*_1$, otherwise the abort condition would be triggered.
+        %
+        If $c_2$ is different, then the input to the random oracle must also
+        be different, since it is included in its input.
+        %
+        Therefore, the behavior of the \dec oracle is independent of the
+        value of $k^*$.
+        %
+        Since the behavior of all oracles is independent of $k^*$, the
+        adversary cannot detect this game hop.
         %
         \begin{gamefigure}{Game $G_3$.}{fig:sdh_reduction_game_3}
             \begin{games}{2}
@@ -484,44 +521,7 @@ $F$.
                 \end{gameenv}
             \end{games}
         \end{gamefigure}
-        %
-        Therefore,
-        %
-    \item[\emph{Claim 3}]
-        %
-        \[ \prone{G^{\adversary{A}}_2} = \prone{G^{\adversary{A}}_3}. \]
-        %
 
-    \item[\emph{Proof}] To prove that this change is undetectable by
-        $\adversary{A}$, we need to argue that $\adversary{A}$'s view when
-        interacting with the various oracles is independent of the value of
-        $k^*$.
-        %
-        The abort condition in $H$ prevents the adversary from querying the
-        random oracle with the value of $k^*_2$ used to generate the shared
-        key $k^*$ from the challenge.
-        %
-        Since the adversary $\adversary{A}$ cannot query the random oracle
-        $H$ with the input used to generate $k^*$, the output of the random
-        oracle $H$ is independent of $k^*$.
-        %
-        The abort condition in \dec also prevents the adversary from querying
-        the \dec oracle in a way that would result in $k^*$ being outputted.
-        %
-        Either $c_1$ or $c_2$ must be different from $c^*_1$ or $c^*_2$.
-        %
-        If $c_1$ is different, then the resulting key $k_1$ must be different
-        from $k^*_1$, otherwise the abort condition would be triggered.
-        %
-        If $c_2$ is different, then the input to the random oracle must also
-        be different, since it is included in its input.
-        %
-        Therefore, the behavior of the \dec oracle is independent of the
-        value of $k^*$.
-        %
-        Since the behavior of all oracles is independent of $k^*$, the
-        adversary cannot detect this game hop.
-        %
     \end{itemize}
 
     \begin{itemize}
@@ -594,7 +594,6 @@ $F$.
         advantage difference.
         %
     \end{itemize}
-
 
 \item
     %

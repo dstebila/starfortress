@@ -508,7 +508,9 @@
     \item[\emph{Proof}]
         %
         Again, the reduction to the IND-CCA security of \kem is perfect,
-        except if $c_2^*$ would not decapsulate to $k_1^*$ in Game 4.
+        except if $c_1^*$ would not decapsulate to $k_1^*$ in Game 4. The
+        event of $c_1^*$ not decapsulating to $k_1^*$ in Game 4 can be bound
+        by the correctness of \kem, and the claim follows.
         %
         \begin{gamefigure}{Adversary $\adversary{C}$ against the IND-CCA
                 security of \kem. Note that both place at most $q_d$ queries
@@ -548,9 +550,6 @@
                 \end{gameenv}
             \end{games}
         \end{gamefigure}
-        %
-        The event of $c_2^*$ not decapsulating to $k_1^*$ in Game 4 can be
-        bound by the correctness of \kem, and the claim follows.
         %
     \item[\emph{Claim 5}]
         $\prone{G^{\adversary{A}}_4} = \prone{\cca^1_{\hqb, \adversary{A}}}$
