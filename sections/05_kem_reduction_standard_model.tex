@@ -421,9 +421,10 @@
                     \State $\sk_e \sample \exponent$
                     \State $c^*_2 \assign \nexp(\ngen, \sk_e)$
                     \State $k^*_2 \assign \nexp(\pk_2, \sk_e)$
-                    \State $k^* \assign \Eval_{H}(k^*_2 \concat c^*_1 \concat c^*_2 \concat \pk_1 \concat \pk_2 \concat \lbl)$
+                   % \State $k^* \assign \Eval_{H}(k^*_2 \concat c^*_1 \concat c^*_2 \concat \pk_1 \concat \pk_2 \concat \lbl)$
                     % \BeginBox[draw=\gthree]
-                    \State \highlightbox{$k^* \sample \bits^{n}$} \label{line:e-hqb-sampled}
+                    %\State \highlightbox{$k^* \sample \bits^{n}$} \label{line:e-hqb-sampled}
+                    \State $k^* \sample \bits^{n}$ \label{line:e-hqb-sampled}
                     % \Comment{$\adversary{E}$}
                     % \EndBox
                     \State $c^* \assign (c_1^*, c_2^*)$
@@ -522,7 +523,7 @@
         \end{gamefigure}
         %
         \begin{gamefigure}{Adversary $\adversary{C}$ against the IND-CCA
-                security of \kem. Note that both place at most $q_d$ queries
+                security of \kem. Note that $\adversary{C}$ makes at most $q_d$ queries
                 to $\dec_O$, one for each decapsulation query placed by
                 $\adversary{A}$.}{fig:adversary-C}
             \begin{games}{2}
