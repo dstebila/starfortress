@@ -1,19 +1,67 @@
-\section{Concrete Instantiations}\label{sec:concrete}
+\section{Guidance for Concrete Instantiations}\label{sec:concrete}
 
-% \subsection{NAME: $\HQB[ML-KEM-768, P-256, HKDF-SHA256]$}
+The $\UG$ construction places minimal requirements on its component
+algorithms, allowing for diverse instantiations. Here we discuss some
+possible concrete choices that satisfy the security assumptions of our
+theorems, especially when targeting approximately 128-bit security.
 
-% \todo[inline]{specify}
+\paragraph{Nominal Groups.}
+For the nominal group $\nominalgroup$, both X25519~\cite{RFC7748} and the
+NIST P-256 curve~\cite{NIST.SP.800.186} are suitable choices. It is generally
+held that both curves achieve \sdh under standard assumptions, with the best
+known classical attacks being generic discrete logarithm algorithms. The
+nominal group abstraction from~\cite{EC:ABHKLR21} captures both Montgomery
+curves like Curve25519 and short Weierstrass curves like P-256.
 
-% \subsection{NAME2: $\HQB[ML-KEM-768, X25519, SHA3]$}
+For X25519, the set of honest exponents $\honestexponent$ consists of 32-byte
+strings with the standard clamping applied, while $\exponent =
+\mathbb{Z}/p\mathbb{Z}$ for the curve's prime order subgroup. The statistical
+distance $\Delta_{\nominalgroup}$ between honestly-generated and uniform
+exponents is negligible ($< 2^{-128}$), as analyzed
+in~\cite{EC:ABHKLR21,CiC:BCDKSV24}. Similar reasoning applies to P-256 when
+using rejection sampling or other standard techniques to generate uniform
+scalars: the two distributions $D_H$ and $D_U$ are identical, thus the
+$\Delta_{\nominalgroup}$ between honestly-generated and uniform exponents is
+0, and all elements have the same probability.
 
-% \todo[inline]{specify}
+\paragraph{Post-Quantum KEMs.}
+ML-KEM-768~\cite{FIPS203} is a popular choice for the \indcca \kem
+component. NIST's standardization process included extensive analysis of
+ML-KEM's \indcca security, reducing \indcca security to the hardness of
+Module-LWE~\cite{EUROSP:BDKLLSSSS18}. ML-KEM-768 targets NIST Security Level
+3, which should be approximately as difficult and expensive to attack as
+running a key search on a 192-bit block cipher. The level 3 parameter set has
+been paired with ~128-bit curves in other hybrid constructions such as X-Wing
+to allow for some cushion and hedging against improvements in lattice
+cryptanalysis in the long term. The correctness error $\delta$ is bounded by
+$2^{-164}$, which is negligible in the security parameter.
 
-\todo[inline]{
-    Ref the IND-CCA proofs for ML-KEM from the FIPS submission or wherever.
+\paragraph{Key Derivation Functions.}
+For the hash function $H$ used as the KDF, both SHA3-256 (or SHAKE256, its
+XOF form) and HKDF-SHA256 are appropriate choices.
 
-    Ref the nominal group proofs for x25519 and the short weierstrass curves from several x-wing and starfighters
+\subparagraph{SHA-3/SHAKE256.}  The Keccak sponge construction underlying
+SHA-3~\cite{FIPS202} provides a clean instantiation when modeling $H$ as a
+random oracle. When keyed, SHAKE256 also achieves \prf security under the
+assumption that the Keccak permutation behaves as an ideal
+permutation~\cite{EC:BDPV08}.  Sponge-based constructions like SHA-3 have
+been shown to be indifferentiable against classical~\cite{EC:BDPV08} as well
+as quantum adversaries~\cite{EPRINT:ACMT25}.
 
-    Ref whatever we got for SHA3 as a nice keyed PRF (keccak docs?)
+\subparagraph{HKDF-SHA256.} In the standard model, HKDF~\cite{C:Krawczyk10}
+instantiated with HMAC-SHA256 provides \prf security under the assumption
+that HMAC-SHA256 is a secure \prf when keyed with a high-entropy
+key. Krawczyk's analysis~\cite{C:Krawczyk10} establishes that HKDF-Expand is
+a \prf when the input key material has sufficient min-entropy, which is
+guaranteed in $\UG$ since $k_1$ is either an honestly-generated \kem shared
+secret or uniform random. HKDF has been shown to be indifferentiable from a
+random oracle under specific constraints~\cite{EUROSP:LipBlaBha19}: that HMAC
+is indifferentiable from a random oracle, which for HMAC-SHA-256 has been
+shown in ~\cite{C:DRST12}, assuming the compression function underlying
+SHA-256 is a random oracle, which it is indifferentiably when used
+prefix-free, and the values of HKDF's \texttt{IKM} input do not collide with
+values of \texttt{info || 0x01}.
 
-    Ref whatever we got for HKDF-SHA256 as a secure keyed PRF (Krawczyk?)
-}
+
+The choice of the KDF $H$'s security level ought to be made based on the
+security level provided by the constituent \kem.
