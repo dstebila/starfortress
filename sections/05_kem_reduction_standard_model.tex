@@ -5,13 +5,13 @@
     Let $\nominalgroup = \nominalgroupexpanded$ be a nominal group and \kem
     be a key encapsulation mechanism, let $H$ be a secure PRF with an output
     size of $n$ when keyed on $k_1$, and let $\adversary{A}$ be an adversary
-    against the \cca security of \hqb in Definition \ref{def:hqb}.
+    against the \cca security of \ug in Definition \ref{def:ug}.
     %
     Then, there exist $\adversary{B}$, $\adversary{C}$, $\adversary{D}$, and
     $\adversary{E}$, such that,
     %
     \[
-        \advantage{\cca, \adversary{A}}{\hqb} \leq \advantage{\cca, \adversary{B}}{\kem} + \advantage{\cca, \adversary{C}}{\kem} + \advantage{\prf, \adversary{D}}{H} + \advantage{\prf, \adversary{E}}{H} + 2\delta \, ,
+        \advantage{\cca, \adversary{A}}{\ug} \leq \advantage{\cca, \adversary{B}}{\kem} + \advantage{\cca, \adversary{C}}{\kem} + \advantage{\prf, \adversary{D}}{H} + \advantage{\prf, \adversary{E}}{H} + 2\delta \, ,
     \]
     %
     where $\delta$ is the correctness bound for \kem.
@@ -28,11 +28,11 @@
     %
     \begin{itemize}
     \item[\textbf{Game 0}]
-        We start with the standard IND-CCA security game for \hqb.
+        We start with the standard IND-CCA security game for \ug.
         %
         Thus,
         %
-        \[ \prone{\cca^0_{\hqb, \adversary{A}}} = \prone{G_0}. \]
+        \[ \prone{\cca^0_{\ug, \adversary{A}}} = \prone{G_0}. \]
         %
         \begin{gamefigure}{Game $G_0$.}{fig:kem-sm-reduction-game-0}
             \begin{games}{2}
@@ -134,8 +134,8 @@
         We construct $\adversary{B}$ as in Figure \ref{fig:adversary-B}.
         %
         The adversary $\adversary{B}$ simulates the environment of
-        $\adversary{A}$ by calculating the nominal group components of \hqb
-        itself and embedding the \kem challenge into the \hqb challenge.
+        $\adversary{A}$ by calculating the nominal group components of \ug
+        itself and embedding the \kem challenge into the \ug challenge.
         %
         The decapsulation oracle is simulated by $\adversary{B}$ as follows:
         it can calculate the nominal group part itself and query its own \kem
@@ -182,7 +182,7 @@
                     % \State \textcolor{red}{$k_1, c^*_1 \sample \kem.\enc(\pk_1)$}
                     \State $c^*_2 \assign \nexp(\ngen, \sk_e)$
                     \State $k^*_2 \assign \nexp(\pk_2, \sk_e)$
-                    \State $k^* \assign H(\hashinputchallenges)$ \label{line:b-real-hqb}
+                    \State $k^* \assign H(\hashinputchallenges)$ \label{line:b-real-ug}
                     \State $c^* \assign (c_1^*, c_2^*)$
                     \State $b' \sample \adversary{A}^{\dec(\cdot)}(\pk, c^*, k^*)$
                     \State \Return $b'$
@@ -209,7 +209,7 @@
     \begin{itemize}
     \item[\textbf{Game 2}]
         %
-        In this game, all \hqb shared keys that are provided to the adversary
+        In this game, all \ug shared keys that are provided to the adversary
         computed using $k_1^*$ are replaced with random values.
 
         % \paulnote{Making a note for myself for later: the Dec oracle output in fig 13 isn't quite right; i think you should need to check consistency to output the same thing twice? as written the adverwsary can maybe distinguish by asking the sam3 query twice}
@@ -421,10 +421,9 @@
                     \State $\sk_e \sample \exponent$
                     \State $c^*_2 \assign \nexp(\ngen, \sk_e)$
                     \State $k^*_2 \assign \nexp(\pk_2, \sk_e)$
-                   % \State $k^* \assign \Eval_{H}(k^*_2 \concat c^*_1 \concat c^*_2 \concat \pk_1 \concat \pk_2 \concat \lbl)$
+                    % \State $k^* \assign \Eval_{H}(k^*_2 \concat c^*_1 \concat c^*_2 \concat \pk_1 \concat \pk_2 \concat \lbl)$
                     % \BeginBox[draw=\gthree]
-                    %\State \highlightbox{$k^* \sample \bits^{n}$} \label{line:e-hqb-sampled}
-                    \State $k^* \sample \bits^{n}$ \label{line:e-hqb-sampled}
+                    \State $k^* \sample \bits^{n}$ \label{line:e-ug-sampled}
                     % \Comment{$\adversary{E}$}
                     % \EndBox
                     \State $c^* \assign (c_1^*, c_2^*)$
@@ -481,10 +480,10 @@
         by the correctness of \kem, and the claim follows.
         %
     \item[\emph{Claim 5}]
-        $\prone{G^{\adversary{A}}_4} = \prone{\cca^1_{\hqb, \adversary{A}}}$
+        $\prone{G^{\adversary{A}}_4} = \prone{\cca^1_{\ug, \adversary{A}}}$
         %
     \item[\emph{Proof}]
-        This follows from the definition of $\cca^1_{\hqb, \adversary{A}}$.
+        This follows from the definition of $\cca^1_{\ug, \adversary{A}}$.
         %
         \begin{gamefigure}{Game $G_4$.}{fig:kem-sm-reduction-game-4}
             \begin{games}{2}
@@ -533,9 +532,9 @@
                     \State $\sk_e \sample \exponent$
                     \State $c^*_2 \assign \nexp(\ngen, \sk_e)$
                     \State $k^*_2 \assign \nexp(\pk_2, \sk_e)$
-                    \State $k^* \assign H(\hashinputchallenges)$ \label{line:b-real-hqb}
+                    \State $k^* \assign H(\hashinputchallenges)$ \label{line:b-real-ug}
                     % \BeginBox[draw=\gfour]
-                    \State \highlightbox{$k^* \sample \bits^{n}$} \label{line:c-sampled-hqb}
+                    \State \highlightbox{$k^* \sample \bits^{n}$} \label{line:c-sampled-ug}
                     % \Comment{$\adversary{C}$}
                     % \EndBox
                     \State $c^* \assign (c_1^*, c_2^*)$

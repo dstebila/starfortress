@@ -1,11 +1,11 @@
-\section{Introducing HQB}\label{sec:hqb}
+\section{Introducing UG}\label{sec:ug}
 
 We consider a construction which combines a $\KEM$ and a nominal group to
 form a hybrid $\KEM$.
 
 \subsection{Design}
 %
-$\HQB$ opts for a conservative construction while providing ease of
+$\UG$ opts for a conservative construction while providing ease of
 implementation given a common set of crypto tools: a KDF, an elliptic
 curve group, and a post-quantum KEM.Relying directly on the SDH security
 of the group allows us to inline the DH-KEM construction and avoid extra
@@ -25,14 +25,14 @@ of `committing'~\cite{CCS:CreDaxMed24} to the public data pertaining to
 the computation of the hybrid shared secret.
 %
 
-\begin{definition}[\hqb] \label{def:hqb}
+\begin{definition}[\ug] \label{def:ug}
     %
     Let $\nominalgroup = \nominalgroupexpanded$ be a nominal group, let
     $\kem$ be a key encapsulation mechanism and let $H$ be a hash function.
     %
-    We define the \hqb \kem as depicted in \autoref{fig:hqb}.
+    We define the \ug \kem as depicted in \autoref{fig:ug}.
     %
-    \begin{gamefigure}{\hqb Framework.}{fig:hqb}
+    \begin{gamefigure}{\ug Framework.}{fig:ug}
         \begin{games}{2}
             \begin{gameenv}{\algor $\keygen()$}
                 \State $(\sk_1, \pk_1)  \sample \kem.\keygen()$
@@ -75,11 +75,11 @@ the computation of the hybrid shared secret.
 
     \subsection{Correctness}
     %
-    The correctness of the HQB framework follows from the correctness of the
-    \kem used to instantiate \hqb.
+    The correctness of the UG framework follows from the correctness of the
+    \kem used to instantiate \ug.
     %
-    Formally, if \hqb is instantiated with a $\delta$-correct \kem, then the
-    correctness of \hqb is defined as follows:
+    Formally, if \ug is instantiated with a $\delta$-correct \kem, then the
+    correctness of \ug is defined as follows:
     %
     \[
         \Pr \left[\,  k \ne k' \, \left | \substack{(\sk, \pk) \sample \keygen(\,) \\ (k, c) \sample \enc(\pk) \\ k' \gets \dec(c, \sk) } \right. \right] \le \delta .

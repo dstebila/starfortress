@@ -22,8 +22,8 @@ scheme.
 
 The Internet Research Task Force (IRTF)'s Crypto Forum Research Group (CFRG) is working towards finalizing a recommendation for specific constructions of hybrid KEMs. The current document~\cite{irtf-cfrg-hybrid-kems-05} gives four constructions named CG, CK, UG, and UK. The 
 
-\paragraph{Our Contributions.} In this paper, we introduce and analyze $\HQB$
-(Heavy Quantum Bomber), a generic hybrid KEM framework that combines a
+\paragraph{Our Contributions.} In this paper, we introduce and analyze $\UG$
+(Universal, Group), a generic hybrid KEM framework that combines a
 post-quantum KEM with a classically-secure nominal group. Unlike other
 constructions, we rely directly on the Strong Diffie-Hellman (SDH) security
 of the group, and include all public encapsulation keys and ciphertexts, so
@@ -34,38 +34,38 @@ We present a hybrid KEM construction that concatenates shared secrets,
 ciphertexts, and encapsulation keys from both components, then applies a key
 derivation function (KDF) to produce the final shared secret. The
 construction is deliberately conservative: by including all public values in
-the KDF input, $\HQB$ makes no special assumptions about its component schemes
+the KDF input, $\UG$ makes no special assumptions about its component schemes
 beyond IND-CCA security of the post-quantum KEM and SDH security of the
 nominal group to achieve IND-CCA security of the hybrid KEM, when either of
 the component schemes lose their security.
 
-We provide two complementary proofs that $\HQB$ is IND-CCA secure. In the
+We provide two complementary proofs that $\UG$ is IND-CCA secure. In the
 pre-quantum case, we prove security in the Random Oracle Model: if the
 nominal group is SDH secure against classical adversaries, then so is
-$\HQB$. This holds even if the post-quantum KEM is broken (without
+$\UG$. This holds even if the post-quantum KEM is broken (without
 compromising the nominal group's secrets). We model the KDF as a Random
 Oracle. In the post-quantum case, we show security in the Standard Model: if
 the post-quantum KEM is IND-CCA secure against quantum adversaries, then so
-is $\HQB$. We model the KDF as a pseudorandom function, keyed by the
-post-quantum shared secret, so breaking $\HQB$ requires breaking the
+is $\UG$. We model the KDF as a pseudorandom function, keyed by the
+post-quantum shared secret, so breaking $\UG$ requires breaking the
 post-quantum KEM. This holds even if the nominal group SDH security is
 completely broken.
 
-Notably, $\HQB$ does not require ciphertext second-preimage resistance
+Notably, $\UG$ does not require ciphertext second-preimage resistance
 (C2PRI)\cite{CiC:BCDKSV24} from its components— SDH and IND-CCA security
-suffices, nor that the classical component be an IND-CCA KEM. Thus, $\HQB$
+suffices, nor that the classical component be an IND-CCA KEM. Thus, $\UG$
 can be instantiated with diverse combinations of elliptic curves as nominal
 groups, and any IND-CCA secure post-quantum KEM.
 
 Our work complements recent hybrid KEM designs that optimize for performance
-by leveraging additional assumptions. $\HQB$ represents a conservative point in
+by leveraging additional assumptions. $\UG$ represents a conservative point in
 the design space: it achieves strong security guarantees with minimal
 assumptions, at the cost of hashing additional public data, while eliminating
 layers of abstraction.
 
 \paragraph{Structure of this paper.}
-Notation and definitions are introduced \autoref{sec:prelims}.  The $\HQB$
-framework is introduced in \autoref{sec:hqb}; our generic construction --
+Notation and definitions are introduced \autoref{sec:prelims}.  The $\UG$
+framework is introduced in \autoref{sec:ug}; our generic construction --
 named Heavy Quantum Bomber -- is a general framework that can be instantiated
-with different component algorithms.  In \autoref{sec:hqb-proofs} we prove
+with different component algorithms.  In \autoref{sec:ug-proofs} we prove
 the IND-CCA security when the different components fail in different ways.
