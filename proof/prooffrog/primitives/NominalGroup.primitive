@@ -1,0 +1,10 @@
+Primitive NominalGroup(Int Nseed, Set GroupElemSpace, Set ExponentSpace) {
+    Int Nseed = Nseed;
+    Set GroupElem = GroupElemSpace;
+    Set Exponent = ExponentSpace;
+
+    GroupElem Exp(GroupElem base, Exponent exp);
+    GroupElem Generator();
+    Exponent SampleExponent();
+    Exponent DeriveExponent(BitString<Nseed> seed);
+}
