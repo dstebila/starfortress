@@ -1,8 +1,11 @@
 // Proof that KEMCCA(UG) is IND-CCA secure assuming:
 //   - Component KEM IND-CCA security (KEMCCA(K))
 //   - PRF security (PRFSec(H))
-//   - Seed-based keygen equivalence (SeedKeyGen(K, NG, G))
+//   - PRG security (PRGSec(G))
+//   - KeyGen equivalence (KeyGenEquiv(K))
 //   - Component KEM correctness (KEMCorrectness(K))
+//
+// SeedKeyGen(K, NG, G) is proven as a lemma from PRGSec(G) + KeyGenEquiv(K).
 //
 // Game hops (20 steps):
 //   KEMCCA(UG).Real
@@ -35,8 +38,10 @@ import 'primitives/PRF.primitive';
 import 'primitives/PRG.primitive';
 
 import 'games/PRF-Security.game';
+import 'games/PRG-Security.game';
 import 'games/KEM-IND-CCA.game';
 import 'games/KEM-Correctness.game';
+import 'games/KeyGenEquiv.game';
 import 'games/SeedKeyGen.game';
 import 'schemes/UG.scheme';
 
@@ -596,8 +601,12 @@ let:
 assume:
     KEMCCA(K);
     PRFSec(H);
-    SeedKeyGen(K, NG, G);
+    PRGSec(G);
+    KeyGenEquiv(K);
     KEMCorrectness(K);
+
+lemma:
+    SeedKeyGen(K, NG, G) by 'SeedKeyGen.proof';
 
 theorem:
     KEMCCA(UG_KEM);
