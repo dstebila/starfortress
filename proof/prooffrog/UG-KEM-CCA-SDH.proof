@@ -1,0 +1,403 @@
+// Proof that UGCCAROM(K, NG, n) is IND-CCA secure (in the ROM) assuming:
+//   - Exponent distribution indistinguishability (ExponentDist(NG))
+//   - Strong Diffie-Hellman security (SDH) [requires identical-until-bad mechanism]
+//
+// This corresponds to Theorem 1 in the StarFortress paper.
+// The KEM component is NOT assumed to be secure; only the DH component
+// provides security. H is modeled as a random oracle.
+//
+// Bound: Adv_UGCCAROM <= 4*Delta_N + 2*Adv_SDH
+//
+// Game hops:
+//   UGCCAROM.Real                                                (Game 0)
+//  1  == ExponentDist(NG).Honest compose R_Dist_Real             (interchangeability)
+//  2  -> ExponentDist(NG).Uniform compose R_Dist_Real            (dist switch: 2*Delta_N)
+//  3  == GameUniform                                             (interchangeability, Game 1)
+//  4  ~~ GameAbort                                               (identical-until-bad: Adv_SDH) [BLOCKED]
+//  5  == GameFreshSS                                             (challenge exclusion, Game 3)
+//  6  ~~ GameUniformRandom                                       (identical-until-bad: Adv_SDH) [BLOCKED]
+//  7  == ExponentDist(NG).Uniform compose R_Dist_Random          (interchangeability)
+//  8  -> ExponentDist(NG).Honest compose R_Dist_Random           (dist switch: 2*Delta_N)
+//  9  == UGCCAROM.Random                                         (interchangeability, Game 4)
+//
+// Steps 4 and 6 require an identical-until-bad proof mechanism that
+// ProofFrog does not yet support. They would be justified by a reduction
+// to the SDH problem (Definition 5 in the paper, Figure 7).
+
+import 'primitives/KEM.primitive';
+import 'primitives/NominalGroup.primitive';
+
+import 'games/ExponentDist.game';
+import 'games/UG-IND-CCA-ROM.game';
+
+// ===================================================================
+// GameUniform (Game 1): like UGCCAROM.Real but with uniform exponents
+// ===================================================================
+// Exponents dk_T and sk_E are sampled uniformly from NG.Exponent
+// instead of via NG.SampleExponent() (epsilon_h).
+Game GameUniform(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T <- NG.Exponent;
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E <- NG.Exponent;
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// GameAbort (Game 2): like GameUniform but H oracle aborts on k2*
+// ===================================================================
+// The Hash oracle checks if the k2 component of the query matches
+// the challenge DH shared secret k2*. If so, it returns a fresh
+// random value instead of the RF output (modeling abort).
+Game GameAbort(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    BitString<NG.NGelem> k2StarEnc;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T <- NG.Exponent;
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E <- NG.Exponent;
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        k2StarEnc = NG.Encode(k2);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || k2StarEnc || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        if (m[K.Nss : K.Nss + NG.NGelem] == k2StarEnc) {
+            BitString<n> r <- BitString<n>;
+            return r;
+        }
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// GameFreshSS (Game 3): like GameAbort but k* is uniformly random
+// ===================================================================
+// The challenge shared secret ss is sampled uniformly instead of
+// computed via the random oracle. The abort in the H oracle ensures
+// the adversary cannot distinguish this change.
+Game GameFreshSS(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    BitString<NG.NGelem> k2StarEnc;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T <- NG.Exponent;
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E <- NG.Exponent;
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        k2StarEnc = NG.Encode(k2);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss <- BitString<n>;
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        if (m[K.Nss : K.Nss + NG.NGelem] == k2StarEnc) {
+            BitString<n> r <- BitString<n>;
+            return r;
+        }
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// GameUniformRandom: like GameUniform but k* is uniformly random
+// ===================================================================
+// Uniform exponents, random k*, no abort. This is the reverse of
+// GameUniform -- reached by removing the abort from GameFreshSS.
+Game GameUniformRandom(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        NG.Exponent local_sk_E <- NG.Exponent;
+        NG.GroupElem g = NG.Generator();
+        NG.Exponent local_dk_T <- NG.Exponent;
+        dk_T = local_dk_T;
+        BitString<n> ss <- BitString<n>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        ek_T = NG.Exp(g, local_dk_T);
+        NG.GroupElem ct_T = NG.Exp(g, local_sk_E);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        ctStar = [ct_PQ, ct_T];
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// R_Dist_Real: embed ExponentDist challenge (Real side)
+// ===================================================================
+// Uses the challenger's exponents as dk_T and sk_E.
+// When composed with ExponentDist.Honest: dk_T, sk_E from SampleExponent.
+// When composed with ExponentDist.Uniform: dk_T, sk_E from uniform.
+Reduction R_Dist_Real(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) against UGCCAROM(K, NG, n).Adversary {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [NG.Exponent, NG.Exponent] dist = challenger.Initialize();
+        dk_T = dist[0];
+        NG.Exponent sk_E = dist[1];
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// R_Dist_Random: embed ExponentDist challenge (Random side)
+// ===================================================================
+// Same as R_Dist_Real but Initialize returns a random shared secret.
+Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) against UGCCAROM(K, NG, n).Adversary {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [NG.Exponent, NG.Exponent] dist = challenger.Initialize();
+        dk_T = dist[0];
+        NG.Exponent sk_E = dist[1];
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss <- BitString<n>;
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+// ===================================================================
+// Proof
+// ===================================================================
+proof:
+
+let:
+    Set KEMCiphertextSpace;
+    Set EncapsKeySpace;
+    Set DecapsKeySpace;
+    Set SharedSecretSpace;
+    Set GroupElemSpace;
+    Set ExponentSpace;
+    Int kem_nseed;
+    Int kem_nss;
+    Int kem_nct;
+    Int kem_nek;
+    Int ng_nseed;
+    Int ng_nelem;
+    Int n;
+
+    KEM K = KEM(kem_nseed, kem_nss, kem_nct, kem_nek, SharedSecretSpace, KEMCiphertextSpace, EncapsKeySpace, DecapsKeySpace);
+    NominalGroup NG = NominalGroup(ng_nseed, ng_nelem, GroupElemSpace, ExponentSpace);
+
+assume:
+    ExponentDist(NG);
+
+theorem:
+    UGCCAROM(K, NG, n);
+
+games:
+    // Game 0: Real IND-CCA for UG in the ROM (epsilon_h exponents, real k*)
+    UGCCAROM(K, NG, n).Real against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 1: Embed ExponentDist challenge (Real side)
+    ExponentDist(NG).Honest compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 2: Switch exponents from epsilon_h to epsilon_u (cost: 2*Delta_N)
+    ExponentDist(NG).Uniform compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 3: Game 1 (uniform exponents, real k*, no abort)
+    GameUniform(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 4: [BLOCKED -- needs identical-until-bad mechanism]
+    // Add abort in H oracle when k2 matches k2* (cost: Adv_SDH)
+    // This would be justified by reduction to SDH (Figure 7 in paper).
+    GameAbort(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 5: Replace k* with uniform random (cost: 0, info-theoretic)
+    // The abort prevents querying RF on the challenge input, so
+    // the challenge RF output is independent of the adversary's view.
+    GameFreshSS(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 6: [BLOCKED -- needs identical-until-bad mechanism]
+    // Remove abort from H oracle (cost: Adv_SDH)
+    // Symmetric argument to Step 4.
+    GameUniformRandom(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 7: Embed ExponentDist challenge (Random side)
+    ExponentDist(NG).Uniform compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Step 8: Switch exponents back from epsilon_u to epsilon_h (cost: 2*Delta_N)
+    ExponentDist(NG).Honest compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+
+    // Game 4: Random IND-CCA for UG in the ROM (epsilon_h exponents, random k*)
+    UGCCAROM(K, NG, n).Random against UGCCAROM(K, NG, n).Adversary;

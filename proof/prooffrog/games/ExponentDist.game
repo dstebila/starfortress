@@ -1,0 +1,30 @@
+// Exponent distribution switch for a nominal group.
+//
+// Models the statistical distance between the honest exponent distribution
+// (SampleExponent, i.e., epsilon_h) and the uniform distribution over
+// Exponent (epsilon_u).
+//
+// Honest: exponents sampled via SampleExponent (epsilon_h)
+// Uniform: exponents sampled uniformly from Exponent (epsilon_u)
+//
+// Advantage bounded by 2 * Delta_N (statistical distance per exponent).
+
+import '../primitives/NominalGroup.primitive';
+
+Game Honest(NominalGroup NG) {
+    [NG.Exponent, NG.Exponent] Initialize() {
+        NG.Exponent x = NG.SampleExponent();
+        NG.Exponent y = NG.SampleExponent();
+        return [x, y];
+    }
+}
+
+Game Uniform(NominalGroup NG) {
+    [NG.Exponent, NG.Exponent] Initialize() {
+        NG.Exponent x <- NG.Exponent;
+        NG.Exponent y <- NG.Exponent;
+        return [x, y];
+    }
+}
+
+export as ExponentDist;

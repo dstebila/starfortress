@@ -1,0 +1,99 @@
+// IND-CCA security for UG in the random oracle model.
+//
+// This game inlines UG's encapsulation and decapsulation with the hash
+// function H modeled as a random oracle (Function). The adversary
+// has access to the random oracle via the Hash oracle.
+//
+// Real: The adversary receives the real shared secret from the random oracle.
+// Random: The adversary receives a uniformly random shared secret.
+
+import '../primitives/KEM.primitive';
+import '../primitives/NominalGroup.primitive';
+
+Game Real(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T = NG.SampleExponent();
+        NG.GroupElem g = NG.Generator();
+        ek_T = NG.Exp(g, dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+Game Random(KEM K, NominalGroup NG, Int n) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        NG.GroupElem g = NG.Generator();
+        dk_T = NG.SampleExponent();
+        BitString<n> ss <- BitString<n>;
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        ek_T = NG.Exp(g, dk_T);
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        ctStar = [ct_PQ, ct_T];
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return RF(m);
+    }
+}
+
+export as UGCCAROM;
