@@ -1,18 +1,16 @@
 // Helper assumption (statistical): the same lazy-map-pair / direct-RF
-// equivalence as LazyROAbort, without the abort-on-challenge-k2 branch.
+// equivalence as LazyROProgrammed, without the m*-programming branch.
 //
-// Used for the post-SDH hop (SDH.Right compose R_Combined -> GameUniformRandom).
-// On SDH.Right, the Solve oracle always returns false, so the abort branch
-// is eliminated during canonicalization; the resulting shape must be
-// matched without the abort check.
+// Used for the post-SDH hop (SDH(NG).Right compose R_Combined ->
+// GameUniformRandom). On SDH.Right the Solve oracle always returns
+// false, so the m*-programming branch of R_Combined is eliminated
+// during canonicalization and the resulting shape must be matched
+// without it.
 //
-// The Honest-side Decaps wraps the honest hash-input builder as a single
-// call to HashInputScheme.BuildInput. The Lazy side keeps explicit
-// slice-equality scans so it can match the SDH(NG).Right compose R_Combined
-// canonical form, which decomposes challenger.DH on the k2 slice into
-// a slice-by-slice check.
+// All KEM / nominal-group setup is performed by the composing reduction;
+// Initialize here only installs state.
 //
-// Indistinguishability is UNCONDITIONAL.
+// Equivalence is UNCONDITIONAL.
 
 import '../primitives/KEM.primitive';
 import '../primitives/NominalGroup.primitive';
@@ -26,21 +24,16 @@ Game Honest(KEM K, NominalGroup NG, HashInputLayout HIS, Int n) {
     [K.Ciphertext, NG.GroupElem] ctStar;
     Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
 
-    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+    BitString<n> Initialize(K.DecapsKey dk, NG.Exponent x_in, K.EncapsKey ek,
+                            NG.GroupElem ekT, [K.Ciphertext, NG.GroupElem] cstar) {
+        dk_PQ = dk;
+        x = x_in;
+        ek_PQ = ek;
+        ek_T = ekT;
+        ctStar = cstar;
         RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
-        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
-        ek_PQ = kem_kp[0];
-        dk_PQ = kem_kp[1];
-        x <- NG.Exponent;
-        NG.GroupElem g = NG.Generator();
-        ek_T = NG.Exp(g, x);
-        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
-        K.Ciphertext ct_PQ = encaps[1];
-        NG.Exponent sk_E <- NG.Exponent;
-        NG.GroupElem ct_T = NG.Exp(g, sk_E);
-        ctStar = [ct_PQ, ct_T];
         BitString<n> ss <- BitString<n>;
-        return [[ek_PQ, ek_T], ss, ctStar];
+        return ss;
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
@@ -66,20 +59,15 @@ Game Lazy(KEM K, NominalGroup NG, HashInputLayout HIS, Int n) {
     Map<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> HT;
     Map<[K.Ciphertext, NG.GroupElem], BitString<n>> DT;
 
-    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
-        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
-        ek_PQ = kem_kp[0];
-        dk_PQ = kem_kp[1];
-        x <- NG.Exponent;
-        NG.GroupElem g = NG.Generator();
-        ek_T = NG.Exp(g, x);
-        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
-        K.Ciphertext ct_PQ = encaps[1];
-        NG.Exponent sk_E <- NG.Exponent;
-        NG.GroupElem ct_T = NG.Exp(g, sk_E);
-        ctStar = [ct_PQ, ct_T];
+    BitString<n> Initialize(K.DecapsKey dk, NG.Exponent x_in, K.EncapsKey ek,
+                            NG.GroupElem ekT, [K.Ciphertext, NG.GroupElem] cstar) {
+        dk_PQ = dk;
+        x = x_in;
+        ek_PQ = ek;
+        ek_T = ekT;
+        ctStar = cstar;
         BitString<n> ss <- BitString<n>;
-        return [[ek_PQ, ek_T], ss, ctStar];
+        return ss;
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
