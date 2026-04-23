@@ -13,7 +13,8 @@
 //
 //   SeedKeyGen(K, NG, G)   absorbs the PRG expansion and converts
 //                          K.DeriveKeyPair(seed) to K.KeyGen()
-//                          (provable as a lemma from PRGSec + KeyGenEquiv).
+//                          (proven as a lemma from PRGSec + KeyGenEquiv
+//                          via SeedKeyGen.proof).
 //   NGKeyGenEquiv(NG)      converts NG.DeriveExponent(fresh seed) to
 //                          NG.SampleExponent() (statistical assumption
 //                          on the nominal group).
@@ -64,6 +65,8 @@ import 'games/LazyROProgrammed.game';
 import 'games/LazyRONoAbort.game';
 import 'games/SeedKeyGen.game';
 import 'games/NGKeyGenEquiv.game';
+import 'games/PRG-Security.game';
+import 'games/KeyGenEquiv.game';
 
 // ===================================================================
 // Intermediate bridge games.
@@ -654,8 +657,12 @@ assume:
     SDH(NG);
     LazyROProgrammed(P, n);
     LazyRONoAbort(P, n);
-    SeedKeyGen(K, NG, G);
+    PRGSec(G);
+    KeyGenEquiv(K);
     NGKeyGenEquiv(NG);
+
+lemma:
+    SeedKeyGen(K, NG, G) by 'SeedKeyGen.proof';
 
 theorem:
     KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H);
