@@ -38,8 +38,8 @@
 
 import 'primitives/KEM.primitive';
 import 'primitives/NominalGroup.primitive';
-import 'primitives/HashInputLayout.primitive';
-import 'schemes/HashInputScheme.scheme';
+import 'primitives/ROProjection.primitive';
+import 'schemes/UGHashProjection.scheme';
 
 import 'games/ExponentDist.game';
 import 'games/SDH.game';
@@ -148,8 +148,8 @@ Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) 
 // KEM- or NominalGroup-specific setup; the helper Initialize bodies
 // are just parameter-to-field assignments plus RF / ss_star sampling.
 // ===================================================================
-Reduction R_Wrap_Prog(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
-    compose LazyROProgrammed(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary {
+Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
+    compose LazyROProgrammed(P, n) against UGCCAROM(K, NG, n).Adversary {
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
@@ -165,12 +165,12 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
         NG.GroupElem ct_T = NG.Exp(g, sk_E);
         NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
         [K.Ciphertext, NG.GroupElem] ctStar = [ct_PQ, ct_T];
-        BitString<NG.NGelem> k2StarEnc = NG.Encode(k2);
-        BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_star =
-            K.EncodeSharedSecret(ss_PQ) || k2StarEnc
+        BitString<P.M> m_star =
+            K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2)
             || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T)
             || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T);
-        BitString<n> ss = challenger.Initialize(dk_PQ, x, ek_PQ, ek_T, ctStar, m_star, ss_PQ, k2StarEnc);
+        BitString<n> ss_star <- BitString<n>;
+        BitString<n> ss = challenger.Initialize([dk_PQ, x, ek_PQ, ek_T], ctStar, m_star, ss_star);
         return [[ek_PQ, ek_T], ss, ctStar];
     }
 
@@ -178,13 +178,13 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
         return challenger.Decaps(c);
     }
 
-    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+    BitString<n> Hash(BitString<P.M> m) {
         return challenger.Hash(m);
     }
 }
 
-Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
-    compose LazyRONoAbort(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary {
+Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n)
+    compose LazyRONoAbort(P, n) against UGCCAROM(K, NG, n).Adversary {
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
@@ -198,7 +198,7 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
         NG.Exponent sk_E <- NG.Exponent;
         NG.GroupElem ct_T = NG.Exp(g, sk_E);
         [K.Ciphertext, NG.GroupElem] ctStar = [ct_PQ, ct_T];
-        BitString<n> ss = challenger.Initialize(dk_PQ, x, ek_PQ, ek_T, ctStar);
+        BitString<n> ss = challenger.Initialize([dk_PQ, x, ek_PQ, ek_T], ctStar);
         return [[ek_PQ, ek_T], ss, ctStar];
     }
 
@@ -206,7 +206,7 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, HashInputLayout HIS, Int n)
         return challenger.Decaps(c);
     }
 
-    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+    BitString<n> Hash(BitString<P.M> m) {
         return challenger.Hash(m);
     }
 }
@@ -345,13 +345,13 @@ let:
 
     KEM K = KEM(kem_nseed, kem_nss, kem_nct, kem_nek, SharedSecretSpace, KEMCiphertextSpace, EncapsKeySpace, DecapsKeySpace);
     NominalGroup NG = NominalGroup(ng_nseed, ng_nelem, GroupElemSpace, ExponentSpace);
-    HashInputScheme HIS = HashInputScheme(K, NG);
+    ROProjection P = UGHashProjection(K, NG);
 
 assume:
     ExponentDist(NG);
     SDH(NG);
-    LazyROProgrammed(K, NG, HIS, n);
-    LazyRONoAbort(K, NG, HIS, n);
+    LazyROProgrammed(P, n);
+    LazyRONoAbort(P, n);
 
 theorem:
     UGCCAROM(K, NG, n);
@@ -362,14 +362,14 @@ games:
     ExponentDist(NG).Honest compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
     ExponentDist(NG).Uniform compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
 
-    LazyROProgrammed(K, NG, HIS, n).Honest compose R_Wrap_Prog(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary;
-    LazyROProgrammed(K, NG, HIS, n).Lazy compose R_Wrap_Prog(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary;
+    LazyROProgrammed(P, n).Honest compose R_Wrap_Prog(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
+    LazyROProgrammed(P, n).Lazy compose R_Wrap_Prog(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
 
     SDH(NG).Left compose R_Combined(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
     SDH(NG).Right compose R_Combined(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
 
-    LazyRONoAbort(K, NG, HIS, n).Lazy compose R_Wrap_NoAbort(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary;
-    LazyRONoAbort(K, NG, HIS, n).Honest compose R_Wrap_NoAbort(K, NG, HIS, n) against UGCCAROM(K, NG, n).Adversary;
+    LazyRONoAbort(P, n).Lazy compose R_Wrap_NoAbort(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
+    LazyRONoAbort(P, n).Honest compose R_Wrap_NoAbort(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
 
     ExponentDist(NG).Uniform compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
     ExponentDist(NG).Honest compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;

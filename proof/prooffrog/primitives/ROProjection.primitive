@@ -1,0 +1,14 @@
+// Abstract deterministic injective projection from a (state, query) pair
+// to a hash input.  Used by the generic LazyROProgrammed and LazyRONoAbort
+// helper games to express lazy-map / cross-patching equivalences without
+// baking in any KEM or nominal-group specifics.  Concrete protocols supply
+// a Scheme extending this primitive that realises Project with the actual
+// hash-input construction.
+
+Primitive ROProjection(Set StateSpace, Set QuerySpace, Int M) {
+    Set State = StateSpace;
+    Set Query = QuerySpace;
+    Int M = M;
+
+    deterministic injective BitString<M> Project(State st, Query q);
+}

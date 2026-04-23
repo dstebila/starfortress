@@ -1,0 +1,38 @@
+// Concrete ROProjection for the UG-KEM hash input
+//     ss_PQ || k2 || ct_PQ || ct_T || ek_PQ || ek_T
+// where State = [dk_PQ, x, ek_PQ, ek_T] and Query = [ct_PQ, ct_T].
+//
+// The hash input is a six-slice concatenation of the encodings of the
+// corresponding primitive components.  Project takes the DH exponent x
+// and computes k2 = c_T^x; c_PQ / c_T are hoisted into named locals so
+// that after inlining the canonical form matches the slice-access style
+// used by sibling reductions.
+//
+// Injectivity follows from the injectivity of the component encodings
+// together with the fact that c_T appears in the clear in the fourth
+// slice (so Exp(c_T, x) being collision-like has no bearing).
+
+import '../primitives/ROProjection.primitive';
+import '../primitives/KEM.primitive';
+import '../primitives/NominalGroup.primitive';
+
+Scheme UGHashProjection(KEM K, NominalGroup NG) extends ROProjection {
+    Set State = [K.DecapsKey, NG.Exponent, K.EncapsKey, NG.GroupElem];
+    Set Query = [K.Ciphertext, NG.GroupElem];
+    Int M = K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem;
+
+    deterministic injective BitString<M> Project(State st, Query q) {
+        K.DecapsKey dk_PQ = st[0];
+        NG.Exponent x = st[1];
+        K.EncapsKey ek_PQ = st[2];
+        NG.GroupElem ek_T = st[3];
+        K.Ciphertext c_PQ = q[0];
+        NG.GroupElem c_T = q[1];
+        return K.EncodeSharedSecret(K.Decaps(dk_PQ, c_PQ))
+            || NG.Encode(NG.Exp(c_T, x))
+            || K.EncodeCiphertext(c_PQ)
+            || NG.Encode(c_T)
+            || K.EncodeEncapsKey(ek_PQ)
+            || NG.Encode(ek_T);
+    }
+}

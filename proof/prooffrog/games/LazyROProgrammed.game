@@ -1,119 +1,99 @@
-// Helper assumption (statistical): programming a random function at the
-// challenge hash input m* with a pre-sampled fresh ss* is equivalent to
-// evaluating the function normally at every query.
+// Helper assumption (statistical).
 //
-// All KEM / nominal-group setup is performed by the composing reduction;
-// Initialize here only installs state.  Honest samples a fresh RF and
-// returns RF(m*); Lazy pre-samples ss_star, stores the six-slice
-// components of m* for the programming check in Hash, and lazily
-// populates HT / DT with DH-oracle-free cross-scans whose canonical
-// form matches SDH(NG).Left compose R_Combined.
+// Generic two-map lazy random-oracle simulator with a programmed value at
+// a distinguished hash input m_star.  Parameterised only by a
+// deterministic injective projection P : (State, Query) -> BitString<M>
+// supplied by the caller; all protocol-specific structure (KEM keys,
+// nominal-group elements, hash-input layout) lives in the concrete
+// ROProjection instance, not here.
 //
-// Equivalence is UNCONDITIONAL: by encode injectivity, no c != ctStar
-// produces an honest hash input equal to m*.
+// Honest:  sample a random function RF over BitString<M>; return
+//          RF(m_star) as the challenge secret; answer Decaps(q) with
+//          RF(P.Project(st, q)) and Hash(m) with RF(m).
+//
+// Lazy:    pre-sample a fresh ss_star; store the distinguished input
+//          m_star and the abort query q_star; lazily populate two maps
+//          HT : BitString<M> -> BitString<n>  and
+//          DT : Query        -> BitString<n>
+//          with cross-patching via P.Project.  Hash has a priority
+//          branch for m == m_star that returns ss_star.
+//
+// Equivalence is UNCONDITIONAL: by injectivity of Project, no Decaps
+// query q != q_star can induce a hash input equal to m_star.
 
-import '../primitives/KEM.primitive';
-import '../primitives/NominalGroup.primitive';
-import '../primitives/HashInputLayout.primitive';
+import '../primitives/ROProjection.primitive';
 
-Game Honest(KEM K, NominalGroup NG, HashInputLayout HIS, Int n) {
-    K.DecapsKey dk_PQ;
-    NG.Exponent x;
-    K.EncapsKey ek_PQ;
-    NG.GroupElem ek_T;
-    [K.Ciphertext, NG.GroupElem] ctStar;
-    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
+Game Honest(ROProjection P, Int n) {
+    P.State st;
+    P.Query qStar;
+    Function<BitString<P.M>, BitString<n>> RF;
 
-    BitString<n> Initialize(K.DecapsKey dk, NG.Exponent x_in, K.EncapsKey ek,
-                            NG.GroupElem ekT, [K.Ciphertext, NG.GroupElem] cstar,
-                            BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_star,
-                            K.SharedSecret ss_PQ_star_in,
-                            BitString<NG.NGelem> k2StarEnc_in) {
-        dk_PQ = dk;
-        x = x_in;
-        ek_PQ = ek;
-        ek_T = ekT;
-        ctStar = cstar;
-        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
-        return RF(m_star);
+    BitString<n> Initialize(P.State st_in, P.Query qStar_in,
+                            BitString<P.M> mStar_in, BitString<n> ssStar_in) {
+        st = st_in;
+        qStar = qStar_in;
+        RF <- Function<BitString<P.M>, BitString<n>>;
+        return RF(mStar_in);
     }
 
-    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        if (c == ctStar) {
+    BitString<n>? Decaps(P.Query q) {
+        if (q == qStar) {
             return None;
         }
-        BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_in = HIS.BuildInput(dk_PQ, x, ek_PQ, ek_T, c);
-        BitString<n> ss = RF(m_in);
-        return ss;
+        BitString<P.M> m_in = P.Project(st, q);
+        return RF(m_in);
     }
 
-    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+    BitString<n> Hash(BitString<P.M> m) {
         return RF(m);
     }
 }
 
-Game Lazy(KEM K, NominalGroup NG, HashInputLayout HIS, Int n) {
-    K.DecapsKey dk_PQ;
-    NG.Exponent x;
-    K.EncapsKey ek_PQ;
-    NG.GroupElem ek_T;
-    [K.Ciphertext, NG.GroupElem] ctStar;
-    K.SharedSecret ss_PQ_star;
-    BitString<NG.NGelem> k2StarEnc;
+Game Lazy(ROProjection P, Int n) {
+    P.State st;
+    P.Query qStar;
+    BitString<P.M> mStar;
     BitString<n> ss_star;
-    Map<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> HT;
-    Map<[K.Ciphertext, NG.GroupElem], BitString<n>> DT;
+    Map<BitString<P.M>, BitString<n>> HT;
+    Map<P.Query, BitString<n>> DT;
 
-    BitString<n> Initialize(K.DecapsKey dk, NG.Exponent x_in, K.EncapsKey ek,
-                            NG.GroupElem ekT, [K.Ciphertext, NG.GroupElem] cstar,
-                            BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_star,
-                            K.SharedSecret ss_PQ_star_in,
-                            BitString<NG.NGelem> k2StarEnc_in) {
-        dk_PQ = dk;
-        x = x_in;
-        ek_PQ = ek;
-        ek_T = ekT;
-        ctStar = cstar;
-        ss_PQ_star = ss_PQ_star_in;
-        k2StarEnc = k2StarEnc_in;
-        ss_star <- BitString<n>;
+    BitString<n> Initialize(P.State st_in, P.Query qStar_in,
+                            BitString<P.M> mStar_in, BitString<n> ssStar_in) {
+        st = st_in;
+        qStar = qStar_in;
+        mStar = mStar_in;
+        ss_star = ssStar_in;
         return ss_star;
     }
 
-    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        if (c == ctStar) {
+    BitString<n>? Decaps(P.Query q) {
+        if (q == qStar) {
             return None;
         }
-        if (c in DT) {
-            return DT[c];
+        if (q in DT) {
+            return DT[q];
         }
-        BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_in = HIS.BuildInput(dk_PQ, x, ek_PQ, ek_T, c);
-        for ([BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>] e in HT.entries) {
+        BitString<P.M> m_in = P.Project(st, q);
+        for ([BitString<P.M>, BitString<n>] e in HT.entries) {
             if (e[0] == m_in) {
-                DT[c] = e[1];
+                DT[q] = e[1];
                 return e[1];
             }
         }
         BitString<n> s <- BitString<n>;
-        DT[c] = s;
+        DT[q] = s;
         return s;
     }
 
-    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
-        BitString<NG.NGelem> k2enc = m[K.Nss : K.Nss + NG.NGelem];
-        if (m[0 : K.Nss] == K.EncodeSharedSecret(ss_PQ_star)
-            && k2enc == k2StarEnc
-            && m[K.Nss + NG.NGelem : K.Nss + NG.NGelem + K.Nct] == K.EncodeCiphertext(ctStar[0])
-            && m[K.Nss + NG.NGelem + K.Nct : K.Nss + NG.NGelem + K.Nct + NG.NGelem] == NG.Encode(ctStar[1])
-            && m[K.Nss + NG.NGelem + K.Nct + NG.NGelem : K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek] == K.EncodeEncapsKey(ek_PQ)
-            && m[K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek : K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem] == NG.Encode(ek_T)) {
+    BitString<n> Hash(BitString<P.M> m) {
+        if (m == mStar) {
             return ss_star;
         }
         if (m in HT) {
             return HT[m];
         }
-        for ([[K.Ciphertext, NG.GroupElem], BitString<n>] e in DT.entries) {
-            BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_expected = HIS.BuildInput(dk_PQ, x, ek_PQ, ek_T, e[0]);
+        for ([P.Query, BitString<n>] e in DT.entries) {
+            BitString<P.M> m_expected = P.Project(st, e[0]);
             if (m == m_expected) {
                 HT[m] = e[1];
                 return e[1];
