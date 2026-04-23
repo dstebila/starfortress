@@ -2,27 +2,28 @@
 //
 // Generic lazy-sampling equivalence for a random oracle
 //     H : BitString<P.M> -> BitString<n>
-// exposed via two interfaces:
-//   - Hash(m):      direct access, returns H(m).
-//   - Derived(q):   projected access on an excluded domain q != qExcluded,
-//                   returns H(P.Encode(st, q)).
-// The caller supplies an injective encoding P : (State, Query) -> BitString<M>.
+// exposed via two views:
+//   - Direct(m):    direct access, returns H(m).
+//   - Indirect(q):  indirect access on an excluded domain q != qExcluded,
+//                   returns H(P.Pack(st, q)).
+// The caller supplies an injective hash-input packing
+// P : (State, Query) -> BitString<M>.
 //
-// Honest:  sample a random function RF and answer both interfaces
+// Honest:  sample a random function RF and answer both views
 //          through it.
 //
 // Lazy:    maintain two lazy maps
-//            HT : BitString<M> -> BitString<n>  (for Hash)
-//            DT : Query        -> BitString<n>  (for Derived)
-//          with cross-patching via P.Encode.  Fresh entries are sampled
-//          on demand; cross-interface hits are routed through Encode.
+//            HT : BitString<M> -> BitString<n>  (for Direct)
+//            QT : Query        -> BitString<n>  (for Indirect)
+//          with cross-patching via P.Pack.  Fresh entries are sampled
+//          on demand; cross-view hits are routed through Pack.
 //
-// Equivalence is UNCONDITIONAL: by injectivity of Encode, a Derived(q)
-// entry can alias a Hash(m) entry only when m == P.Encode(st, q).
+// Equivalence is UNCONDITIONAL: by injectivity of Pack, an Indirect(q)
+// entry can alias a Direct(m) entry only when m == P.Pack(st, q).
 
-import '../primitives/InjectiveEncoding.primitive';
+import '../primitives/HashInputPacking.primitive';
 
-Game Honest(InjectiveEncoding P, Int n) {
+Game Honest(HashInputPacking P, Int n) {
     P.State st;
     P.Query qExcluded;
     Function<BitString<P.M>, BitString<n>> RF;
@@ -35,24 +36,24 @@ Game Honest(InjectiveEncoding P, Int n) {
         return ss;
     }
 
-    BitString<n>? Derived(P.Query q) {
+    BitString<n>? Indirect(P.Query q) {
         if (q == qExcluded) {
             return None;
         }
-        BitString<P.M> m_in = P.Encode(st, q);
+        BitString<P.M> m_in = P.Pack(st, q);
         return RF(m_in);
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Direct(BitString<P.M> m) {
         return RF(m);
     }
 }
 
-Game Lazy(InjectiveEncoding P, Int n) {
+Game Lazy(HashInputPacking P, Int n) {
     P.State st;
     P.Query qExcluded;
     Map<BitString<P.M>, BitString<n>> HT;
-    Map<P.Query, BitString<n>> DT;
+    Map<P.Query, BitString<n>> QT;
 
     BitString<n> Initialize(P.State st_in, P.Query qExcluded_in) {
         st = st_in;
@@ -61,31 +62,31 @@ Game Lazy(InjectiveEncoding P, Int n) {
         return ss;
     }
 
-    BitString<n>? Derived(P.Query q) {
+    BitString<n>? Indirect(P.Query q) {
         if (q == qExcluded) {
             return None;
         }
-        if (q in DT) {
-            return DT[q];
+        if (q in QT) {
+            return QT[q];
         }
-        BitString<P.M> m_in = P.Encode(st, q);
+        BitString<P.M> m_in = P.Pack(st, q);
         for ([BitString<P.M>, BitString<n>] e in HT.entries) {
             if (e[0] == m_in) {
-                DT[q] = e[1];
+                QT[q] = e[1];
                 return e[1];
             }
         }
         BitString<n> s <- BitString<n>;
-        DT[q] = s;
+        QT[q] = s;
         return s;
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Direct(BitString<P.M> m) {
         if (m in HT) {
             return HT[m];
         }
-        for ([P.Query, BitString<n>] e in DT.entries) {
-            BitString<P.M> m_expected = P.Encode(st, e[0]);
+        for ([P.Query, BitString<n>] e in QT.entries) {
+            BitString<P.M> m_expected = P.Pack(st, e[0]);
             if (m == m_expected) {
                 HT[m] = e[1];
                 return e[1];
@@ -97,4 +98,4 @@ Game Lazy(InjectiveEncoding P, Int n) {
     }
 }
 
-export as LazyRONoAbort;
+export as LazyROTwoViewsExcluded;

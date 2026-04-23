@@ -2,31 +2,32 @@
 //
 // Generic lazy-sampling equivalence for a random oracle
 //     H : BitString<P.M> -> BitString<n>
-// exposed via two interfaces, with one programmed point:
-//   - Hash(m):      direct access; H(mProgrammed) is fixed to yProgrammed,
+// exposed via two views, with one programmed point:
+//   - Direct(m):    direct access; H(mProgrammed) is fixed to yProgrammed,
 //                   otherwise returns H(m).
-//   - Derived(q):   projected access on an excluded domain q != qExcluded,
-//                   returns H(P.Encode(st, q)).
-// The caller supplies an injective encoding P : (State, Query) -> BitString<M>
-// together with the distinguished pair (mProgrammed, yProgrammed).
+//   - Indirect(q):  indirect access on an excluded domain q != qExcluded,
+//                   returns H(P.Pack(st, q)).
+// The caller supplies an injective hash-input packing
+// P : (State, Query) -> BitString<M> together with the distinguished
+// pair (mProgrammed, yProgrammed).
 //
 // Honest:  sample a random function RF; return RF(mProgrammed) as the
-//          programmed secret; answer Derived(q) with RF(P.Encode(st, q))
-//          and Hash(m) with RF(m).
+//          programmed secret; answer Indirect(q) with RF(P.Pack(st, q))
+//          and Direct(m) with RF(m).
 //
 // Lazy:    pre-sample the programmed value yProgrammed; store
 //          mProgrammed and qExcluded; maintain two lazy maps
-//            HT : BitString<M> -> BitString<n>  (for Hash)
-//            DT : Query        -> BitString<n>  (for Derived)
-//          with cross-patching via P.Encode.  Hash has a priority
+//            HT : BitString<M> -> BitString<n>  (for Direct)
+//            QT : Query        -> BitString<n>  (for Indirect)
+//          with cross-patching via P.Pack.  Direct has a priority
 //          branch for m == mProgrammed that returns yProgrammed.
 //
-// Equivalence is UNCONDITIONAL: by injectivity of Encode, no Derived(q)
+// Equivalence is UNCONDITIONAL: by injectivity of Pack, no Indirect(q)
 // with q != qExcluded can induce a hash input equal to mProgrammed.
 
-import '../primitives/InjectiveEncoding.primitive';
+import '../primitives/HashInputPacking.primitive';
 
-Game Honest(InjectiveEncoding P, Int n) {
+Game Honest(HashInputPacking P, Int n) {
     P.State st;
     P.Query qExcluded;
     Function<BitString<P.M>, BitString<n>> RF;
@@ -39,26 +40,26 @@ Game Honest(InjectiveEncoding P, Int n) {
         return RF(mProgrammed_in);
     }
 
-    BitString<n>? Derived(P.Query q) {
+    BitString<n>? Indirect(P.Query q) {
         if (q == qExcluded) {
             return None;
         }
-        BitString<P.M> m_in = P.Encode(st, q);
+        BitString<P.M> m_in = P.Pack(st, q);
         return RF(m_in);
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Direct(BitString<P.M> m) {
         return RF(m);
     }
 }
 
-Game Lazy(InjectiveEncoding P, Int n) {
+Game Lazy(HashInputPacking P, Int n) {
     P.State st;
     P.Query qExcluded;
     BitString<P.M> mProgrammed;
     BitString<n> yProgrammed;
     Map<BitString<P.M>, BitString<n>> HT;
-    Map<P.Query, BitString<n>> DT;
+    Map<P.Query, BitString<n>> QT;
 
     BitString<n> Initialize(P.State st_in, P.Query qExcluded_in,
                             BitString<P.M> mProgrammed_in, BitString<n> yProgrammed_in) {
@@ -69,34 +70,34 @@ Game Lazy(InjectiveEncoding P, Int n) {
         return yProgrammed;
     }
 
-    BitString<n>? Derived(P.Query q) {
+    BitString<n>? Indirect(P.Query q) {
         if (q == qExcluded) {
             return None;
         }
-        if (q in DT) {
-            return DT[q];
+        if (q in QT) {
+            return QT[q];
         }
-        BitString<P.M> m_in = P.Encode(st, q);
+        BitString<P.M> m_in = P.Pack(st, q);
         for ([BitString<P.M>, BitString<n>] e in HT.entries) {
             if (e[0] == m_in) {
-                DT[q] = e[1];
+                QT[q] = e[1];
                 return e[1];
             }
         }
         BitString<n> s <- BitString<n>;
-        DT[q] = s;
+        QT[q] = s;
         return s;
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Direct(BitString<P.M> m) {
         if (m == mProgrammed) {
             return yProgrammed;
         }
         if (m in HT) {
             return HT[m];
         }
-        for ([P.Query, BitString<n>] e in DT.entries) {
-            BitString<P.M> m_expected = P.Encode(st, e[0]);
+        for ([P.Query, BitString<n>] e in QT.entries) {
+            BitString<P.M> m_expected = P.Pack(st, e[0]);
             if (m == m_expected) {
                 HT[m] = e[1];
                 return e[1];
@@ -108,4 +109,4 @@ Game Lazy(InjectiveEncoding P, Int n) {
     }
 }
 
-export as LazyROProgrammed;
+export as LazyROTwoViewsExcludedProgrammed;

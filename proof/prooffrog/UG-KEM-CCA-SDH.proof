@@ -22,7 +22,7 @@
 // The core bad-event analysis is unchanged from the bespoke version:
 // three paper hops (Steps 4, 5, 6) are collapsed into a single SDH
 // application via R_Combined, using two statistical helper assumptions
-// (LazyROProgrammed, LazyRONoAbort).
+// (LazyROTwoViewsExcludedProgrammed, LazyROTwoViewsExcluded).
 //
 // Bound: Adv_KEMCCAROM <= 2*Adv_SeedKeyGen + 2*Adv_NGKeyGenEquiv
 //                        + 4*Delta_N + Adv_SDH.
@@ -36,12 +36,12 @@
 //    5: UGCCAROMReal                                       (equiv)
 //    6: ExponentDist.Honest compose R_Dist_Real           (equiv)
 //    7: ExponentDist.Uniform compose R_Dist_Real          (by ExponentDist)
-//    8: LazyROProgrammed.Honest compose R_Wrap_Prog       (equiv, = GameUniform)
-//    9: LazyROProgrammed.Lazy compose R_Wrap_Prog         (by LazyROProgrammed)
+//    8: LazyROTwoViewsExcludedProgrammed.Honest compose R_Wrap_Prog       (equiv, = GameUniform)
+//    9: LazyROTwoViewsExcludedProgrammed.Lazy compose R_Wrap_Prog         (by LazyROTwoViewsExcludedProgrammed)
 //   10: SDH.Left compose R_Combined                       (equiv)
 //   11: SDH.Right compose R_Combined                      (by SDH)
-//   12: LazyRONoAbort.Lazy compose R_Wrap_NoAbort         (equiv)
-//   13: LazyRONoAbort.Honest compose R_Wrap_NoAbort       (by LazyRONoAbort, = GameUniformRandom)
+//   12: LazyROTwoViewsExcluded.Lazy compose R_Wrap_NoAbort         (equiv)
+//   13: LazyROTwoViewsExcluded.Honest compose R_Wrap_NoAbort       (by LazyROTwoViewsExcluded, = GameUniformRandom)
 //   14: ExponentDist.Uniform compose R_Dist_Random        (equiv)
 //   15: ExponentDist.Honest compose R_Dist_Random         (by ExponentDist)
 //   16: UGCCAROMRandom                                     (equiv)
@@ -54,15 +54,15 @@
 import 'primitives/KEM.primitive';
 import 'primitives/NominalGroup.primitive';
 import 'primitives/PRG.primitive';
-import 'primitives/InjectiveEncoding.primitive';
+import 'primitives/HashInputPacking.primitive';
 import 'schemes/UG_ROM.scheme';
 import 'schemes/UGHashEncoding.scheme';
 
 import 'games/ExponentDist.game';
 import 'games/SDH.game';
 import 'games/KEM-IND-CCA-ROM.game';
-import 'games/LazyROProgrammed.game';
-import 'games/LazyRONoAbort.game';
+import 'games/LazyROTwoViewsExcludedProgrammed.game';
+import 'games/LazyROTwoViewsExcluded.game';
 import 'games/SeedKeyGen.game';
 import 'games/NGKeyGenEquiv.game';
 import 'games/PRG-Security.game';
@@ -364,8 +364,8 @@ Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString
 // specific setup; the helper Initialize bodies are just parameter-to-
 // field assignments plus RF / ss_star sampling.
 // ===================================================================
-Reduction R_Wrap_Prog(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
-    compose LazyROProgrammed(P, n)
+Reduction R_Wrap_Prog(KEM K, NominalGroup NG, HashInputPacking P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose LazyROTwoViewsExcludedProgrammed(P, n)
     against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
     K.SharedSecret ss_PQ;
@@ -396,16 +396,16 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG G,
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        return challenger.Derived(c);
+        return challenger.Indirect(c);
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
-        return challenger.Hash(m);
+        return challenger.Direct(m);
     }
 }
 
-Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
-    compose LazyRONoAbort(P, n)
+Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, HashInputPacking P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose LazyROTwoViewsExcluded(P, n)
     against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
@@ -425,11 +425,11 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        return challenger.Derived(c);
+        return challenger.Indirect(c);
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
-        return challenger.Hash(m);
+        return challenger.Direct(m);
     }
 }
 
@@ -447,7 +447,7 @@ Reduction R_Combined(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.
     K.SharedSecret ss_PQ_star;
     BitString<n> ss_star;
     Map<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> HT;
-    Map<[K.Ciphertext, NG.GroupElem], BitString<n>> DT;
+    Map<[K.Ciphertext, NG.GroupElem], BitString<n>> QT;
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [NG.GroupElem, NG.GroupElem] chal = challenger.Initialize();
@@ -468,8 +468,8 @@ Reduction R_Combined(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.
         if (c == ctStar) {
             return None;
         }
-        if (c in DT) {
-            return DT[c];
+        if (c in QT) {
+            return QT[c];
         }
         K.Ciphertext c_PQ = c[0];
         NG.GroupElem c_T = c[1];
@@ -487,12 +487,12 @@ Reduction R_Combined(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.
                 && m[K.Nss + NG.NGelem + K.Nct : K.Nss + NG.NGelem + K.Nct + NG.NGelem] == c_T_enc
                 && m[K.Nss + NG.NGelem + K.Nct + NG.NGelem : K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek] == ek_PQ_enc
                 && m[K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek : K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem] == ek_T_enc) {
-                DT[c] = e[1];
+                QT[c] = e[1];
                 return e[1];
             }
         }
         BitString<n> s <- BitString<n>;
-        DT[c] = s;
+        QT[c] = s;
         return s;
     }
 
@@ -509,7 +509,7 @@ Reduction R_Combined(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.
         if (m in HT) {
             return HT[m];
         }
-        for ([[K.Ciphertext, NG.GroupElem], BitString<n>] e in DT.entries) {
+        for ([[K.Ciphertext, NG.GroupElem], BitString<n>] e in QT.entries) {
             [K.Ciphertext, NG.GroupElem] c_key = e[0];
             K.Ciphertext c_PQ = c_key[0];
             NG.GroupElem c_T = c_key[1];
@@ -648,15 +648,15 @@ let:
     KEM K = KEM(kem_nseed, kem_nss, kem_nct, kem_nek, SharedSecretSpace, KEMCiphertextSpace, EncapsKeySpace, DecapsKeySpace);
     NominalGroup NG = NominalGroup(ng_nseed, ng_nelem, GroupElemSpace, ExponentSpace);
     PRG G = PRG(g_lambda, g_stretch);
-    InjectiveEncoding P = UGHashEncoding(K, NG);
+    HashInputPacking P = UGHashEncoding(K, NG);
     Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
     KEM S = UG_ROM(K, NG, n, G, H);
 
 assume:
     ExponentDist(NG);
     SDH(NG);
-    LazyROProgrammed(P, n);
-    LazyRONoAbort(P, n);
+    LazyROTwoViewsExcludedProgrammed(P, n);
+    LazyROTwoViewsExcluded(P, n);
     PRGSec(G);
     KeyGenEquiv(K);
     NGKeyGenEquiv(NG);
@@ -681,14 +681,14 @@ games:
     ExponentDist(NG).Honest compose R_Dist_Real(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
     ExponentDist(NG).Uniform compose R_Dist_Real(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    LazyROProgrammed(P, n).Honest compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
-    LazyROProgrammed(P, n).Lazy compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyROTwoViewsExcludedProgrammed(P, n).Honest compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyROTwoViewsExcludedProgrammed(P, n).Lazy compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
     SDH(NG).Left compose R_Combined(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
     SDH(NG).Right compose R_Combined(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    LazyRONoAbort(P, n).Lazy compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
-    LazyRONoAbort(P, n).Honest compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyROTwoViewsExcluded(P, n).Lazy compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyROTwoViewsExcluded(P, n).Honest compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
     ExponentDist(NG).Uniform compose R_Dist_Random(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
     ExponentDist(NG).Honest compose R_Dist_Random(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
