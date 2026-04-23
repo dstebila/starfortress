@@ -151,6 +151,10 @@ Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) 
 Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
     compose LazyROProgrammed(P, n) against UGCCAROM(K, NG, n).Adversary {
 
+    K.SharedSecret ss_PQ;
+    K.Ciphertext ct_PQ;
+    BitString<NG.NGelem> k2_enc;
+
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
         K.EncapsKey ek_PQ = kem_kp[0];
@@ -159,14 +163,14 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
         NG.GroupElem g = NG.Generator();
         NG.GroupElem ek_T = NG.Exp(g, x);
         [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
-        K.SharedSecret ss_PQ = encaps[0];
-        K.Ciphertext ct_PQ = encaps[1];
+        ss_PQ = encaps[0];
+        ct_PQ = encaps[1];
         NG.Exponent sk_E <- NG.Exponent;
         NG.GroupElem ct_T = NG.Exp(g, sk_E);
-        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        k2_enc = NG.Encode(NG.Exp(ek_T, sk_E));
         [K.Ciphertext, NG.GroupElem] ctStar = [ct_PQ, ct_T];
         BitString<P.M> m_star =
-            K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2)
+            K.EncodeSharedSecret(ss_PQ) || k2_enc
             || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T)
             || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T);
         BitString<n> ss_star <- BitString<n>;
