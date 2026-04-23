@@ -54,9 +54,9 @@
 import 'primitives/KEM.primitive';
 import 'primitives/NominalGroup.primitive';
 import 'primitives/PRG.primitive';
-import 'primitives/ROProjection.primitive';
+import 'primitives/InjectiveEncoding.primitive';
 import 'schemes/UG_ROM.scheme';
-import 'schemes/UGHashProjection.scheme';
+import 'schemes/UGHashEncoding.scheme';
 
 import 'games/ExponentDist.game';
 import 'games/SDH.game';
@@ -364,7 +364,7 @@ Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString
 // specific setup; the helper Initialize bodies are just parameter-to-
 // field assignments plus RF / ss_star sampling.
 // ===================================================================
-Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+Reduction R_Wrap_Prog(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
     compose LazyROProgrammed(P, n)
     against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
@@ -396,7 +396,7 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Func
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        return challenger.Decaps(c);
+        return challenger.Derived(c);
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
@@ -404,7 +404,7 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Func
     }
 }
 
-Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, InjectiveEncoding P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
     compose LazyRONoAbort(P, n)
     against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
@@ -425,7 +425,7 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, F
     }
 
     BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
-        return challenger.Decaps(c);
+        return challenger.Derived(c);
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
@@ -648,7 +648,7 @@ let:
     KEM K = KEM(kem_nseed, kem_nss, kem_nct, kem_nek, SharedSecretSpace, KEMCiphertextSpace, EncapsKeySpace, DecapsKeySpace);
     NominalGroup NG = NominalGroup(ng_nseed, ng_nelem, GroupElemSpace, ExponentSpace);
     PRG G = PRG(g_lambda, g_stretch);
-    ROProjection P = UGHashProjection(K, NG);
+    InjectiveEncoding P = UGHashEncoding(K, NG);
     Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
     KEM S = UG_ROM(K, NG, n, G, H);
 

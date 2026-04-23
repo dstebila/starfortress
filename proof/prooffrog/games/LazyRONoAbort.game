@@ -1,33 +1,45 @@
 // Helper assumption (statistical).
 //
-// The same generic lazy two-map / direct-RF equivalence as
-// LazyROProgrammed, but without the m_star-programming branch.  Used in
-// contexts where the distinguished input has already been "erased" by an
-// upstream hop (e.g. the challenger-Solve-is-constant-false case).
+// Generic lazy-sampling equivalence for a random oracle
+//     H : BitString<P.M> -> BitString<n>
+// exposed via two interfaces:
+//   - Hash(m):      direct access, returns H(m).
+//   - Derived(q):   projected access on an excluded domain q != qExcluded,
+//                   returns H(P.Encode(st, q)).
+// The caller supplies an injective encoding P : (State, Query) -> BitString<M>.
 //
-// Parameterised only by a deterministic injective projection
-// P : (State, Query) -> BitString<M>.  Equivalence is UNCONDITIONAL.
+// Honest:  sample a random function RF and answer both interfaces
+//          through it.
+//
+// Lazy:    maintain two lazy maps
+//            HT : BitString<M> -> BitString<n>  (for Hash)
+//            DT : Query        -> BitString<n>  (for Derived)
+//          with cross-patching via P.Encode.  Fresh entries are sampled
+//          on demand; cross-interface hits are routed through Encode.
+//
+// Equivalence is UNCONDITIONAL: by injectivity of Encode, a Derived(q)
+// entry can alias a Hash(m) entry only when m == P.Encode(st, q).
 
-import '../primitives/ROProjection.primitive';
+import '../primitives/InjectiveEncoding.primitive';
 
-Game Honest(ROProjection P, Int n) {
+Game Honest(InjectiveEncoding P, Int n) {
     P.State st;
-    P.Query qStar;
+    P.Query qExcluded;
     Function<BitString<P.M>, BitString<n>> RF;
 
-    BitString<n> Initialize(P.State st_in, P.Query qStar_in) {
+    BitString<n> Initialize(P.State st_in, P.Query qExcluded_in) {
         st = st_in;
-        qStar = qStar_in;
+        qExcluded = qExcluded_in;
         RF <- Function<BitString<P.M>, BitString<n>>;
         BitString<n> ss <- BitString<n>;
         return ss;
     }
 
-    BitString<n>? Decaps(P.Query q) {
-        if (q == qStar) {
+    BitString<n>? Derived(P.Query q) {
+        if (q == qExcluded) {
             return None;
         }
-        BitString<P.M> m_in = P.Project(st, q);
+        BitString<P.M> m_in = P.Encode(st, q);
         return RF(m_in);
     }
 
@@ -36,27 +48,27 @@ Game Honest(ROProjection P, Int n) {
     }
 }
 
-Game Lazy(ROProjection P, Int n) {
+Game Lazy(InjectiveEncoding P, Int n) {
     P.State st;
-    P.Query qStar;
+    P.Query qExcluded;
     Map<BitString<P.M>, BitString<n>> HT;
     Map<P.Query, BitString<n>> DT;
 
-    BitString<n> Initialize(P.State st_in, P.Query qStar_in) {
+    BitString<n> Initialize(P.State st_in, P.Query qExcluded_in) {
         st = st_in;
-        qStar = qStar_in;
+        qExcluded = qExcluded_in;
         BitString<n> ss <- BitString<n>;
         return ss;
     }
 
-    BitString<n>? Decaps(P.Query q) {
-        if (q == qStar) {
+    BitString<n>? Derived(P.Query q) {
+        if (q == qExcluded) {
             return None;
         }
         if (q in DT) {
             return DT[q];
         }
-        BitString<P.M> m_in = P.Project(st, q);
+        BitString<P.M> m_in = P.Encode(st, q);
         for ([BitString<P.M>, BitString<n>] e in HT.entries) {
             if (e[0] == m_in) {
                 DT[q] = e[1];
@@ -73,7 +85,7 @@ Game Lazy(ROProjection P, Int n) {
             return HT[m];
         }
         for ([P.Query, BitString<n>] e in DT.entries) {
-            BitString<P.M> m_expected = P.Project(st, e[0]);
+            BitString<P.M> m_expected = P.Encode(st, e[0]);
             if (m == m_expected) {
                 HT[m] = e[1];
                 return e[1];
