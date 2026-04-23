@@ -1,0 +1,27 @@
+// Nominal-group exponent KeyGen equivalence.
+//
+// Captures the statistical assumption that sampling an exponent by
+// expanding a uniform seed through NG.DeriveExponent is equivalent to
+// sampling directly via NG.SampleExponent. For concrete instantiations
+// (e.g., X25519 clamping) this holds because DeriveExponent is designed
+// so that its distribution on a uniform seed matches SampleExponent.
+//
+// FromSeed:  sample a uniform seed, apply NG.DeriveExponent.
+// Direct:    sample directly via NG.SampleExponent.
+
+import '../primitives/NominalGroup.primitive';
+
+Game FromSeed(NominalGroup NG) {
+    NG.Exponent Query() {
+        BitString<NG.Nseed> seed <- BitString<NG.Nseed>;
+        return NG.DeriveExponent(seed);
+    }
+}
+
+Game Direct(NominalGroup NG) {
+    NG.Exponent Query() {
+        return NG.SampleExponent();
+    }
+}
+
+export as NGKeyGenEquiv;

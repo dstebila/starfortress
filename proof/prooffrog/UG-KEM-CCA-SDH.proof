@@ -1,80 +1,99 @@
 // Proof of Theorem 1 (UG-KEM-CCA in the ROM, from ExponentDist + SDH).
 //
-// This proof does NOT follow the paper's intermediate games
-// GameAbort / GameFreshSS. Instead, the three "bad-event" hops of the
-// paper's sequence (Steps 4, 5, 6) are collapsed into a single SDH
-// application via reduction R_Combined, saving a factor of 2 in the
-// bound and avoiding the identical-until-bad reasoning the paper uses
-// for those steps.
+// Targets the generic ROM KEM-IND-CCA game composed with a ROM-ized
+// UG scheme (UG_ROM) that receives H as a Function parameter. The hash
+// function is sampled at proof level and shared between the scheme and
+// the game, following the HashedElGamal / INDCPA_ROM_MultiChal pattern.
 //
-// The collapse uses two statistical helper assumptions:
-//   LazyROProgrammed  -- programming RF at the challenge hash input m*
-//                        with a pre-sampled fresh ss* is equivalent to
-//                        RF(m*). Sound because, by Encode injectivity,
-//                        no Decaps query c != ctStar induces an honest
-//                        hash-input equal to m*.
-//   LazyRONoAbort     -- a lazy two-map pair with DH-oracle-mediated
-//                        cross-patching simulates a consistent RO.
+// The canonical form of KEMCCAROM(UG_ROM, ...).Real differs from the
+// bespoke UGCCAROM.Real game on key generation: the former goes through
+// UG_ROM.KeyGen -> DeriveKeyPair(PRG seed) + NG.DeriveExponent(seed),
+// whereas UGCCAROM uses K.KeyGen + NG.SampleExponent directly. To
+// bridge these two canonical forms we hop via two assumption lemmas:
 //
-// Both are unconditional statistical identities. The only cryptographic
-// assumptions are ExponentDist (exponent distribution switch, 2*Delta_N)
-// and SDH (the decision Strong-DH game).
+//   SeedKeyGen(K, NG, G)   absorbs the PRG expansion and converts
+//                          K.DeriveKeyPair(seed) to K.KeyGen()
+//                          (provable as a lemma from PRGSec + KeyGenEquiv).
+//   NGKeyGenEquiv(NG)      converts NG.DeriveExponent(fresh seed) to
+//                          NG.SampleExponent() (statistical assumption
+//                          on the nominal group).
 //
-// Bound: Adv_UGCCAROM <= 4*Delta_N + Adv_SDH.
+// The core bad-event analysis is unchanged from the bespoke version:
+// three paper hops (Steps 4, 5, 6) are collapsed into a single SDH
+// application via R_Combined, using two statistical helper assumptions
+// (LazyROProgrammed, LazyRONoAbort).
 //
-// Game sequence (11 hops):
-//   0: UGCCAROM.Real
-//   1: ExponentDist.Honest compose R_Dist_Real           (equiv)
-//   2: ExponentDist.Uniform compose R_Dist_Real          (by ExponentDist)
-//   3: LazyROProgrammed.Honest                           (equiv, = GameUniform)
-//   4: LazyROProgrammed.Lazy                             (by LazyROProgrammed)
-//   5: SDH.Left compose R_Combined                       (equiv)
-//   6: SDH.Right compose R_Combined                      (by SDH)
-//   7: LazyRONoAbort.Lazy                                (equiv)
-//   8: LazyRONoAbort.Honest                              (by LazyRONoAbort, = GameUniformRandom)
-//   9: ExponentDist.Uniform compose R_Dist_Random        (equiv)
-//  10: ExponentDist.Honest compose R_Dist_Random         (by ExponentDist)
-//  11: UGCCAROM.Random
+// Bound: Adv_KEMCCAROM <= 2*Adv_SeedKeyGen + 2*Adv_NGKeyGenEquiv
+//                        + 4*Delta_N + Adv_SDH.
+//
+// Game sequence (21 hops, 22 entries):
+//    0: KEMCCAROM(UG_ROM(K, NG, n, G, H), D, BitString<n>, H).Real
+//    1: SeedKeyGen.Real compose R_SKG_L                   (equiv)
+//    2: SeedKeyGen.FromKeyGen compose R_SKG_L             (by SeedKeyGen)
+//    3: NGKeyGenEquiv.FromSeed compose R_DH_L             (equiv)
+//    4: NGKeyGenEquiv.Direct compose R_DH_L               (by NGKeyGenEquiv)
+//    5: UGCCAROMReal                                       (equiv)
+//    6: ExponentDist.Honest compose R_Dist_Real           (equiv)
+//    7: ExponentDist.Uniform compose R_Dist_Real          (by ExponentDist)
+//    8: LazyROProgrammed.Honest compose R_Wrap_Prog       (equiv, = GameUniform)
+//    9: LazyROProgrammed.Lazy compose R_Wrap_Prog         (by LazyROProgrammed)
+//   10: SDH.Left compose R_Combined                       (equiv)
+//   11: SDH.Right compose R_Combined                      (by SDH)
+//   12: LazyRONoAbort.Lazy compose R_Wrap_NoAbort         (equiv)
+//   13: LazyRONoAbort.Honest compose R_Wrap_NoAbort       (by LazyRONoAbort, = GameUniformRandom)
+//   14: ExponentDist.Uniform compose R_Dist_Random        (equiv)
+//   15: ExponentDist.Honest compose R_Dist_Random         (by ExponentDist)
+//   16: UGCCAROMRandom                                     (equiv)
+//   17: NGKeyGenEquiv.Direct compose R_DH_R               (equiv)
+//   18: NGKeyGenEquiv.FromSeed compose R_DH_R             (by NGKeyGenEquiv)
+//   19: SeedKeyGen.FromKeyGen compose R_SKG_R             (equiv)
+//   20: SeedKeyGen.Real compose R_SKG_R                   (by SeedKeyGen)
+//   21: KEMCCAROM(UG_ROM(K, NG, n, G, H), D, BitString<n>, H).Random
 
 import 'primitives/KEM.primitive';
 import 'primitives/NominalGroup.primitive';
+import 'primitives/PRG.primitive';
 import 'primitives/ROProjection.primitive';
+import 'schemes/UG_ROM.scheme';
 import 'schemes/UGHashProjection.scheme';
 
 import 'games/ExponentDist.game';
 import 'games/SDH.game';
-import 'games/UG-IND-CCA-ROM.game';
+import 'games/KEM-IND-CCA-ROM.game';
 import 'games/LazyROProgrammed.game';
 import 'games/LazyRONoAbort.game';
+import 'games/SeedKeyGen.game';
+import 'games/NGKeyGenEquiv.game';
 
 // ===================================================================
-// R_Dist_Real (Real-side ExponentDist embedding). Copied verbatim from v1.
+// Intermediate bridge games.
+//
+// UGCCAROMReal / UGCCAROMRandom are the bespoke hand-inlined forms of
+// UG's Real/Random that the main bad-event hops were originally written
+// against. They use K.KeyGen() for PQ keys and NG.SampleExponent() for
+// the DH exponent. The SeedKeyGen + NGKeyGenEquiv bridges hop from
+// these forms to the generic KEMCCAROM(UG_ROM, ...) canonical forms.
 // ===================================================================
-Reduction R_Dist_Real(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) against UGCCAROM(K, NG, n).Adversary {
+Game UGCCAROMReal(KEM K, NominalGroup NG, Int n, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H) {
     K.DecapsKey dk_PQ;
     NG.Exponent dk_T;
     K.EncapsKey ek_PQ;
-    NG.GroupElem ek_T;
     [K.Ciphertext, NG.GroupElem] ctStar;
-    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
-        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
-        [NG.Exponent, NG.Exponent] dist = challenger.Initialize();
-        dk_T = dist[0];
-        NG.Exponent sk_E = dist[1];
-        NG.GroupElem g = NG.Generator();
-        ek_T = NG.Exp(g, dk_T);
-        NG.GroupElem ct_T = NG.Exp(g, sk_E);
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
         ek_PQ = kem_kp[0];
         dk_PQ = kem_kp[1];
+        dk_T = NG.SampleExponent();
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
         [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
         K.SharedSecret ss_PQ = encaps[0];
         K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
         NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
         ctStar = [ct_PQ, ct_T];
-        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
         return [[ek_PQ, ek_T], ss, ctStar];
     }
 
@@ -86,34 +105,227 @@ Reduction R_Dist_Real(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) ag
         NG.GroupElem c_T = c[1];
         K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
         NG.GroupElem k2 = NG.Exp(c_T, dk_T);
-        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
         return ss;
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
-        return RF(m);
+        return H(m);
+    }
+}
+
+Game UGCCAROMRandom(KEM K, NominalGroup NG, Int n, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H) {
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T = NG.SampleExponent();
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss <- BitString<n>;
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
     }
 }
 
 // ===================================================================
-// R_Dist_Random (Random-side ExponentDist embedding). Copied from v1.
+// Left bridge: SeedKeyGen (absorbs PRG + KEM-KeyGenEquiv).
 // ===================================================================
-Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) against UGCCAROM(K, NG, n).Adversary {
+// Receives compound UG keys from the SeedKeyGen challenger and inlines
+// UG's Encaps to build the challenge output. On SeedKeyGen.Real the
+// challenger produces seed-expanded keys (matching KEMCCAROM(UG_ROM).Real
+// canonical form); on FromKeyGen it produces K.KeyGen + NG.DeriveExponent
+// (matching the intermediate state between the two bridge hops).
+Reduction R_SKG_L(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose SeedKeyGen(K, NG, G)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
     K.DecapsKey dk_PQ;
     NG.Exponent dk_T;
     K.EncapsKey ek_PQ;
     NG.GroupElem ek_T;
     [K.Ciphertext, NG.GroupElem] ctStar;
-    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> RF;
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
-        RF <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+        [[K.EncapsKey, NG.GroupElem], [K.DecapsKey, NG.Exponent, K.EncapsKey]] kp = challenger.Query();
+        [K.EncapsKey, NG.GroupElem] ek = kp[0];
+        ek_PQ = ek[0];
+        ek_T = ek[1];
+        [K.DecapsKey, NG.Exponent, K.EncapsKey] dk = kp[1];
+        dk_PQ = dk[0];
+        dk_T = dk[1];
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem g = NG.Generator();
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
+    }
+}
+
+// ===================================================================
+// Left bridge: NGKeyGenEquiv (DeriveExponent(seed) ~ SampleExponent).
+// ===================================================================
+// PQ keys come from direct K.KeyGen (matching post-SeedKeyGen state);
+// the DH exponent dk_T is obtained from the NGKeyGenEquiv challenger.
+// On FromSeed it produces DeriveExponent(fresh seed), on Direct it
+// produces SampleExponent -- bridging to UGCCAROMReal.
+Reduction R_DH_L(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose NGKeyGenEquiv(NG)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T = challenger.Query();
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
+    }
+}
+
+// ===================================================================
+// R_Dist_Real (Real-side ExponentDist embedding).
+// ===================================================================
+Reduction R_Dist_Real(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose ExponentDist(NG)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [NG.Exponent, NG.Exponent] dist = challenger.Initialize();
         dk_T = dist[0];
         NG.Exponent sk_E = dist[1];
-        NG.GroupElem g = NG.Generator();
-        ek_T = NG.Exp(g, dk_T);
-        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.SharedSecret ss_PQ = encaps[0];
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.GroupElem k2 = NG.Exp(ek_T, sk_E);
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
+    }
+}
+
+// ===================================================================
+// R_Dist_Random (Random-side ExponentDist embedding).
+// ===================================================================
+Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose ExponentDist(NG)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        [NG.Exponent, NG.Exponent] dist = challenger.Initialize();
+        dk_T = dist[0];
+        NG.Exponent sk_E = dist[1];
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
         ek_PQ = kem_kp[0];
         dk_PQ = kem_kp[1];
@@ -132,24 +344,26 @@ Reduction R_Dist_Random(KEM K, NominalGroup NG, Int n) compose ExponentDist(NG) 
         NG.GroupElem c_T = c[1];
         K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
         NG.GroupElem k2 = NG.Exp(c_T, dk_T);
-        BitString<n> ss = RF(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
         return ss;
     }
 
     BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
-        return RF(m);
+        return H(m);
     }
 }
 
 // ===================================================================
 // R_Wrap_Prog / R_Wrap_NoAbort: KEM/NG setup wrappers that adapt the
-// helper games (which now take all state via Initialize) into the
-// UGCCAROM adversary interface. These wrappers hold every piece of
-// KEM- or NominalGroup-specific setup; the helper Initialize bodies
-// are just parameter-to-field assignments plus RF / ss_star sampling.
+// helper games (which take all state via Initialize) into the adversary
+// interface. These wrappers hold every piece of KEM- or NominalGroup-
+// specific setup; the helper Initialize bodies are just parameter-to-
+// field assignments plus RF / ss_star sampling.
 // ===================================================================
-Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
-    compose LazyROProgrammed(P, n) against UGCCAROM(K, NG, n).Adversary {
+Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose LazyROProgrammed(P, n)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
     K.SharedSecret ss_PQ;
     K.Ciphertext ct_PQ;
@@ -169,7 +383,7 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
         NG.GroupElem ct_T = NG.Exp(g, sk_E);
         k2_enc = NG.Encode(NG.Exp(ek_T, sk_E));
         [K.Ciphertext, NG.GroupElem] ctStar = [ct_PQ, ct_T];
-        BitString<P.M> m_star =
+        BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m_star =
             K.EncodeSharedSecret(ss_PQ) || k2_enc
             || K.EncodeCiphertext(ct_PQ) || NG.Encode(ct_T)
             || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T);
@@ -182,13 +396,14 @@ Reduction R_Wrap_Prog(KEM K, NominalGroup NG, ROProjection P, Int n)
         return challenger.Decaps(c);
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
         return challenger.Hash(m);
     }
 }
 
-Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n)
-    compose LazyRONoAbort(P, n) against UGCCAROM(K, NG, n).Adversary {
+Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose LazyRONoAbort(P, n)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
 
     [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
         [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
@@ -210,7 +425,7 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n)
         return challenger.Decaps(c);
     }
 
-    BitString<n> Hash(BitString<P.M> m) {
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
         return challenger.Hash(m);
     }
 }
@@ -218,25 +433,10 @@ Reduction R_Wrap_NoAbort(KEM K, NominalGroup NG, ROProjection P, Int n)
 // ===================================================================
 // R_Combined: the single SDH reduction for the whole bad-event portion.
 // ===================================================================
-//
-// State: ss* pre-sampled fresh at Initialize and returned as the challenge;
-// ss_PQ_star stored so Hash's m*-patching branch can test the full m*-shape.
-// Two-map lazy tables HT / DT are used for all RO answers; Decaps cross-scans
-// HT via challenger.DH, and Hash cross-scans DT likewise. Additionally,
-// Hash has a FIRST branch that fires on a full m*-slice match (using
-// challenger.Solve for the unknown k2* slice, and direct equality on the
-// other five slices against the stored state), returning ss* -- this is
-// the ROM-programming trick for the challenge point.
-//
-// On SDH.Left: challenger.Solve fires iff the k2-slice decodes to g^(xy).
-// With all other slices matching, the only m that triggers is m* itself,
-// so Hash(m*) returns ss*. This makes ss* act as RF(m*) from the adversary's
-// view -- matching GameUniform.
-//
-// On SDH.Right: challenger.Solve is constant false; the m*-patching
-// branch is eliminated. Hash(m) falls through to lazy HT with cross-scan
-// of DT -- matching LazyRONoAbort.Lazy and ultimately GameUniformRandom.
-Reduction R_Combined(KEM K, NominalGroup NG, Int n) compose SDH(NG) against UGCCAROM(K, NG, n).Adversary {
+Reduction R_Combined(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose SDH(NG)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
     K.DecapsKey dk_PQ;
     K.EncapsKey ek_PQ;
     NG.GroupElem ek_T;
@@ -328,6 +528,99 @@ Reduction R_Combined(KEM K, NominalGroup NG, Int n) compose SDH(NG) against UGCC
 }
 
 // ===================================================================
+// Right bridge: NGKeyGenEquiv (symmetric of R_DH_L, Random side).
+// ===================================================================
+Reduction R_DH_R(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose NGKeyGenEquiv(NG)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        [K.EncapsKey, K.DecapsKey] kem_kp = K.KeyGen();
+        ek_PQ = kem_kp[0];
+        dk_PQ = kem_kp[1];
+        dk_T = challenger.Query();
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem ct_T = NG.Exp(NG.Generator(), sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss <- BitString<n>;
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        NG.GroupElem ek_T = NG.Exp(NG.Generator(), dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
+    }
+}
+
+// ===================================================================
+// Right bridge: SeedKeyGen (symmetric of R_SKG_L, Random side).
+// ===================================================================
+Reduction R_SKG_R(KEM K, NominalGroup NG, Int n, PRG G, Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H)
+    compose SeedKeyGen(K, NG, G)
+    against KEMCCAROM(UG_ROM(K, NG, n, G, H), BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary {
+
+    K.DecapsKey dk_PQ;
+    NG.Exponent dk_T;
+    K.EncapsKey ek_PQ;
+    NG.GroupElem ek_T;
+    [K.Ciphertext, NG.GroupElem] ctStar;
+
+    [[K.EncapsKey, NG.GroupElem], BitString<n>, [K.Ciphertext, NG.GroupElem]] Initialize() {
+        [[K.EncapsKey, NG.GroupElem], [K.DecapsKey, NG.Exponent, K.EncapsKey]] kp = challenger.Query();
+        [K.EncapsKey, NG.GroupElem] ek = kp[0];
+        ek_PQ = ek[0];
+        ek_T = ek[1];
+        [K.DecapsKey, NG.Exponent, K.EncapsKey] dk = kp[1];
+        dk_PQ = dk[0];
+        dk_T = dk[1];
+        [K.SharedSecret, K.Ciphertext] encaps = K.Encaps(ek_PQ);
+        K.Ciphertext ct_PQ = encaps[1];
+        NG.Exponent sk_E = NG.SampleExponent();
+        NG.GroupElem g = NG.Generator();
+        NG.GroupElem ct_T = NG.Exp(g, sk_E);
+        ctStar = [ct_PQ, ct_T];
+        BitString<n> ss <- BitString<n>;
+        return [[ek_PQ, ek_T], ss, ctStar];
+    }
+
+    BitString<n>? Decaps([K.Ciphertext, NG.GroupElem] c) {
+        if (c == ctStar) {
+            return None;
+        }
+        K.Ciphertext c_PQ = c[0];
+        NG.GroupElem c_T = c[1];
+        K.SharedSecret ss_PQ = K.Decaps(dk_PQ, c_PQ);
+        NG.GroupElem k2 = NG.Exp(c_T, dk_T);
+        BitString<n> ss = H(K.EncodeSharedSecret(ss_PQ) || NG.Encode(k2) || K.EncodeCiphertext(c_PQ) || NG.Encode(c_T) || K.EncodeEncapsKey(ek_PQ) || NG.Encode(ek_T));
+        return ss;
+    }
+
+    BitString<n> Hash(BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem> m) {
+        return H(m);
+    }
+}
+
+// ===================================================================
 // Proof
 // ===================================================================
 proof:
@@ -346,36 +639,59 @@ let:
     Int ng_nseed;
     Int ng_nelem;
     Int n;
+    Int g_lambda;
+    Int g_stretch;
 
     KEM K = KEM(kem_nseed, kem_nss, kem_nct, kem_nek, SharedSecretSpace, KEMCiphertextSpace, EncapsKeySpace, DecapsKeySpace);
     NominalGroup NG = NominalGroup(ng_nseed, ng_nelem, GroupElemSpace, ExponentSpace);
+    PRG G = PRG(g_lambda, g_stretch);
     ROProjection P = UGHashProjection(K, NG);
+    Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>> H <- Function<BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>>;
+    KEM S = UG_ROM(K, NG, n, G, H);
 
 assume:
     ExponentDist(NG);
     SDH(NG);
     LazyROProgrammed(P, n);
     LazyRONoAbort(P, n);
+    SeedKeyGen(K, NG, G);
+    NGKeyGenEquiv(NG);
 
 theorem:
-    UGCCAROM(K, NG, n);
+    KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H);
 
 games:
-    UGCCAROM(K, NG, n).Real against UGCCAROM(K, NG, n).Adversary;
+    KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Real against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    ExponentDist(NG).Honest compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
-    ExponentDist(NG).Uniform compose R_Dist_Real(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+    SeedKeyGen(K, NG, G).Real compose R_SKG_L(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    SeedKeyGen(K, NG, G).FromKeyGen compose R_SKG_L(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    LazyROProgrammed(P, n).Honest compose R_Wrap_Prog(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
-    LazyROProgrammed(P, n).Lazy compose R_Wrap_Prog(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
+    NGKeyGenEquiv(NG).FromSeed compose R_DH_L(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    NGKeyGenEquiv(NG).Direct compose R_DH_L(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    SDH(NG).Left compose R_Combined(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
-    SDH(NG).Right compose R_Combined(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+    UGCCAROMReal(K, NG, n, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    LazyRONoAbort(P, n).Lazy compose R_Wrap_NoAbort(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
-    LazyRONoAbort(P, n).Honest compose R_Wrap_NoAbort(K, NG, P, n) against UGCCAROM(K, NG, n).Adversary;
+    ExponentDist(NG).Honest compose R_Dist_Real(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    ExponentDist(NG).Uniform compose R_Dist_Real(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    ExponentDist(NG).Uniform compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
-    ExponentDist(NG).Honest compose R_Dist_Random(K, NG, n) against UGCCAROM(K, NG, n).Adversary;
+    LazyROProgrammed(P, n).Honest compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyROProgrammed(P, n).Lazy compose R_Wrap_Prog(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
 
-    UGCCAROM(K, NG, n).Random against UGCCAROM(K, NG, n).Adversary;
+    SDH(NG).Left compose R_Combined(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    SDH(NG).Right compose R_Combined(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    LazyRONoAbort(P, n).Lazy compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    LazyRONoAbort(P, n).Honest compose R_Wrap_NoAbort(K, NG, P, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    ExponentDist(NG).Uniform compose R_Dist_Random(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    ExponentDist(NG).Honest compose R_Dist_Random(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    UGCCAROMRandom(K, NG, n, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    NGKeyGenEquiv(NG).Direct compose R_DH_R(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    NGKeyGenEquiv(NG).FromSeed compose R_DH_R(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    SeedKeyGen(K, NG, G).FromKeyGen compose R_SKG_R(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+    SeedKeyGen(K, NG, G).Real compose R_SKG_R(K, NG, n, G, H) against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
+
+    KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Random against KEMCCAROM(S, BitString<K.Nss + NG.NGelem + K.Nct + NG.NGelem + K.Nek + NG.NGelem>, BitString<n>, H).Adversary;
